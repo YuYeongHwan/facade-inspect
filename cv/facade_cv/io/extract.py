@@ -4,6 +4,7 @@ python -m facade_cv.io.extract --video X --out runs/<id>/frames --fps 3 --debug
 """
 
 import json
+import re
 import time
 from bisect import bisect_left, bisect_right
 from collections.abc import Iterator
@@ -17,6 +18,12 @@ from facade_cv.config import load_config
 
 DEBUG_COLORS = {None: (0, 200, 0), "blur": (0, 0, 220), "exposure": (0, 140, 255), "duplicate": (128, 128, 128)}
 RESCUED_COLOR = (220, 200, 0)
+GROUP_SEP = "__"  # <flightID>__frame_<index>.jpg — merge_datasets가 flightID로 split 그룹을 묶는다
+
+
+def default_flight_id(video_path: str | Path) -> str:
+    """영상 파일명 stem. 구분자(__)와 경로/공백 문자는 _로 바꾼다."""
+    return re.sub(r"_{2,}", "_", re.sub(r"[^\w.-]", "_", Path(video_path).stem)).strip("_") or "flight"
 
 
 def iterate_video(source: str | Path | int, realtime: bool = False) -> Iterator[tuple[float, np.ndarray]]:
@@ -111,8 +118,10 @@ def extract_frames(
     max_side: int = 1920,
     debug: bool = False,
     cfg: dict | None = None,
+    flight_id: str | None = None,
 ) -> dict:
-    """키프레임을 out_dir/frame_<index>.jpg로 저장하고 out_dir/frames.json 내용을 반환.
+    """키프레임을 out_dir/<flight_id>__frame_<index>.jpg로 저장하고 out_dir/frames.json 내용을 반환.
+    flight_id 기본값은 영상 파일명 (default_flight_id).
 
     필터 순서: 노출 → 블러 → 중복(ORB 겹침). 겹침이 max_motion을 넘거나 불명이면 사이 프레임
     (중복 후보 → 블러 제거 프레임 중 가장 덜 흐린 것 순)을 끼워 넣는다. 이동량 불명 프레임은 저장한다.
@@ -120,6 +129,9 @@ def extract_frames(
     """
     cfg = cfg or load_config("extract")
     video_path, out_dir = Path(video_path), Path(out_dir)
+    flight_id = flight_id or default_flight_id(video_path)
+    if GROUP_SEP in flight_id or not re.fullmatch(r"[\w.-]+", flight_id):
+        raise ValueError(f"flight_id {flight_id!r}: only [A-Za-z0-9_.-] without '{GROUP_SEP}'")
     exp, blur_cfg, dd = cfg["exposure"], cfg["blur"], cfg["dedup"]
 
     # 1차: 품질 점수. ponytail: 영상을 두 번 디코딩 — 프레임을 메모리에 쌓지 않으려는 선택
@@ -153,7 +165,7 @@ def extract_frames(
 
     # 2차: 중복 필터 + 저장
     out_dir.mkdir(parents=True, exist_ok=True)
-    for old in out_dir.glob("frame_*.jpg"):
+    for old in out_dir.glob("*frame_*.jpg"):  # 이전 실행 결과 (flight_id가 바뀌었어도)
         old.unlink()
     orb = cv2.ORB_create(dd["orb_features"])
     matcher = cv2.BFMatcher(cv2.NORM_HAMMING)
@@ -161,7 +173,7 @@ def extract_frames(
 
     def select(r: dict, frame: np.ndarray) -> None:
         r["selected"], r["reason"] = True, None
-        r["file"] = f"frame_{r['index']:06d}.jpg"
+        r["file"] = f"{flight_id}{GROUP_SEP}frame_{r['index']:06d}.jpg"
         cv2.imwrite(str(out_dir / r["file"]), frame, [cv2.IMWRITE_JPEG_QUALITY, cfg["jpeg_quality"]])
 
     def features(frame: np.ndarray) -> tuple:
@@ -212,7 +224,7 @@ def extract_frames(
             pending, rescue = (r, frame), None
 
     manifest = {
-        "video": str(video_path), "target_fps": target_fps, "max_side": max_side,
+        "video": str(video_path), "flight_id": flight_id, "target_fps": target_fps, "max_side": max_side,
         "num_selected": sum(r["selected"] for r in records),
         "frames": records,
     }
@@ -228,8 +240,9 @@ def main(
     fps: float = 3,
     max_side: int = 1920,
     debug: bool = False,
+    flight_id: str = typer.Option(None, help="출력 파일명 접두사 <flightID>__frame_<index>.jpg (기본: 영상 파일명)"),
 ) -> None:
-    m = extract_frames(video, out, fps, max_side, debug)
+    m = extract_frames(video, out, fps, max_side, debug, flight_id=flight_id)
     print(f"{m['num_selected']}/{len(m['frames'])} frames selected → {out}")
 
 

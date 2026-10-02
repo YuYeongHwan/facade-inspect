@@ -1,0 +1,27 @@
+# 창문/외벽 인스턴스 분할 데이터셋 (facade_cv.detect.datasets)
+names: [window, facade]   # YOLO class id 순서 (0=window, 1=facade)
+polygon_eps: 0.005        # approxPolyDP epsilon (윤곽 길이 대비)
+min_area_ratio: 0.0005    # 이미지 면적 대비 이보다 작은 인스턴스는 버림
+
+cmp:
+  # 라벨 PNG 팔레트 index → CMP 클래스 (CMP label_names.txt 첫 두 열)
+  index: {1: background, 2: facade, 3: window, 4: door, 5: cornice, 6: sill,
+          7: balcony, 8: blind, 9: deco, 10: molding, 11: pillar, 12: shop}
+  # window 인스턴스 = XML 사각형(labelname=window_xml_label) 하나 ∩ (window 픽셀 클래스) — 붙은 창문 분리,
+  # 덧문(blind)으로 갈라진 H자 창문 복원. 사각형 밖 blind는 facade로 남는다
+  window_xml_label: window
+  window: [window, blind]
+  # 벽 계열 → facade 하나로 합침 (구멍은 채운 외곽 polygon). 제외: background, door, shop, balcony
+  facade: [facade, molding, cornice, pillar, sill, deco, blind]
+
+split:
+  seed: 0
+  cmp: {train: 0.9, val: 0.1, test: 0.0}
+  own: {train: 0.6, val: 0.2, test: 0.2}   # val/test는 비율과 무관하게 최소 1그룹 보장
+  # 자체 이미지 그룹 키 (파일명 stem에 대한 정규식 group 1). 같은 그룹은 같은 split으로 → 연속 프레임 누수 방지
+  # 예: flightA__frame_000123.jpg → flightA. 매칭 안 되면 이미지 하나가 한 그룹
+  own_group_pattern: "^(.+?)__"
+
+prelabel:
+  conf: 0.25
+  imgsz: 1280

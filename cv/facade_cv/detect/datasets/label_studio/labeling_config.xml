@@ -1,0 +1,8 @@
+<!-- Label Studio labeling config: 창문/외벽 polygon. name="label"/"image"는 export_to_yolo.py, prelabel.py와 일치해야 함 -->
+<View>
+  <Image name="image" value="$image" zoom="true" zoomControl="true" rotateControl="false"/>
+  <PolygonLabels name="label" toName="image" strokeWidth="2" pointSize="small" opacity="0.4">
+    <Label value="window" background="#1f77b4"/>
+    <Label value="facade" background="#ff7f0e"/>
+  </PolygonLabels>
+</View>

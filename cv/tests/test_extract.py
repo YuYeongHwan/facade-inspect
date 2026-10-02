@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from facade_cv.config import load_config
-from facade_cv.io.extract import _motion, extract_frames, iterate_video
+from facade_cv.io.extract import _motion, default_flight_id, extract_frames, iterate_video
 
 FPS, W, H, SPEED = 30, 640, 480, 20
 N = 90
@@ -69,6 +69,8 @@ def test_extract_filters(pan_video, tmp_path):
     selected = [r for r in m["frames"] if r["selected"]]
 
     assert sorted(p.name for p in out.glob("*.jpg")) == sorted(r["file"] for r in selected)
+    assert all(r["file"] == f"pan__frame_{r['index']:06d}.jpg" for r in selected)  # 기본 flight_id = 영상 파일명
+    assert m["flight_id"] == "pan"
     assert json.loads((out / "frames.json").read_text())["num_selected"] == len(selected)
     assert (tmp_path / "run" / "debug" / "frames_grid.jpg").is_file()
 
@@ -182,3 +184,34 @@ def test_scene_cut_saves_unknown_motion(tmp_path):
     first_after = next(r for r in m["frames"] if r["index"] >= cut)
     assert first_after["selected"] and first_after["motion"] is None
     assert any(r["reason"] == "duplicate" for r in m["frames"] if r["index"] > cut)  # 이후엔 다시 정상 비교
+
+
+def test_flight_id_naming(pan_video, tmp_path):
+    out = tmp_path / "frames"
+    m = extract_frames(pan_video, out, target_fps=10, flight_id="2026-10-02_bldgA")
+    names = {p.name for p in out.glob("*.jpg")}
+    assert names and all(n.startswith("2026-10-02_bldgA__frame_") for n in names)
+    # 재실행 시 flight_id가 바뀌어도 이전 프레임은 지워진다
+    extract_frames(pan_video, out, target_fps=10, flight_id="other")
+    assert all(p.name.startswith("other__") for p in out.glob("*.jpg"))
+    for bad in ("a__b", "a/b", "a b"):
+        with pytest.raises(ValueError, match="flight_id"):
+            extract_frames(pan_video, out, target_fps=10, flight_id=bad)
+
+
+@pytest.mark.parametrize(
+    ("video", "expected"),
+    [("DJI_0001.MP4", "DJI_0001"), ("runs/x/my flight__2.mp4", "my_flight_2"), ("__.mp4", "flight")],
+)
+def test_default_flight_id(video, expected):
+    assert default_flight_id(video) == expected
+
+
+def test_extract_cli_flight_id(pan_video, tmp_path):
+    import subprocess
+    import sys
+
+    out = tmp_path / "frames"
+    subprocess.run([sys.executable, "-m", "facade_cv.io.extract", "--video", str(pan_video), "--out", str(out),
+                    "--fps", "10", "--flight-id", "F1"], check=True, capture_output=True)
+    assert all(p.name.startswith("F1__frame_") for p in out.glob("*.jpg"))

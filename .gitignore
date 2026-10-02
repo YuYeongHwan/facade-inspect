@@ -9,3 +9,7 @@ __pycache__/
 .next/
 .DS_Store
 .claude/
+
+# 학습 가중치
+cv/weights/
+*.pt

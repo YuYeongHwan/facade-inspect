@@ -1,6 +1,4 @@
-# 프레임 샘플링
-frame_stride: 5
-max_frames: 300
+# 프레임 샘플링은 config/extract.yaml (facade_cv.io.extract)
 # pycolmap SfM
 feature: sift
 max_num_features: 8192

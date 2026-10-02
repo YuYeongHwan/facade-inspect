@@ -1,0 +1,19 @@
+# facade_cv.io.extract — 프레임 추출 필터
+blur:
+  threshold: 30       # Laplacian variance 절대 임계값 (max_side 축소 후 기준). 미만이면 제거
+  window_sec: 2       # 상대 컷: ±window_sec 안의 노출 통과 프레임 중
+  percentile: 20      #   블러 점수 하위 N% 미만이면 제거 (0이면 상대 컷 끔)
+exposure:
+  over_value: 250     # 회색조 ≥ 이 값 = 과노출 픽셀
+  under_value: 5      # 회색조 ≤ 이 값 = 저노출 픽셀
+  max_ratio: 0.3      # 과/저노출 픽셀 비율이 이보다 크면 제거
+dedup:
+  analysis_side: 640  # ORB 분석용 축소 해상도 (긴 변)
+  orb_features: 1000
+  min_matches: 15     # 특징점/매칭/inlier가 이보다 적으면 이동량 불명(motion=null) → 저장
+  min_motion: 0.2     # motion = 1 - 직전 선택 프레임과의 겹침. 0.2~0.3 → 70~80% 겹침
+  max_motion: 0.3     # 초과·불명 시 직전 중복 후보 → 가장 덜 흐린 블러 프레임 순으로 끼워 넣어 겹침 유지
+jpeg_quality: 95
+debug:
+  thumb_width: 192
+  columns: 10

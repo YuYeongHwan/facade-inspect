@@ -470,6 +470,7 @@ open3d = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "nbformat" },
     { name = "pytest" },
 ]
 
@@ -493,7 +494,10 @@ requires-dist = [
 provides-extras = ["open3d"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest" }]
+dev = [
+    { name = "nbformat", specifier = ">=5.11.1" },
+    { name = "pytest" },
+]
 
 [[package]]
 name = "fastjsonschema"

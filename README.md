@@ -17,7 +17,7 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
       datasets/     창문/외벽 분할 데이터셋 도구 (cmp_convert, label_studio/, merge_datasets)
     track/ rectify/ contamination/ recon3d/   (빈 패키지)
   tests/            pytest
-  notebooks/        Colab 학습 노트북
+  notebooks/        Colab 학습 노트북 (train_seg.ipynb — 사용법은 notebooks/README.md)
 config/             grading.yaml(등급), extract.yaml(프레임 필터), dataset.yaml(데이터셋), augment.yaml(학습 증강),
                     detect.yaml, recon.yaml
 fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/, windows/)
@@ -115,6 +115,8 @@ uv run --project cv python -m facade_cv.detect.datasets.merge_datasets \
 - 출력 파일명은 `cmp__<원본>` / `<own 디렉토리명>__<원본>`, `data.yaml` 생성
 
 ### 4. 학습 증강 정책 (config/augment.yaml)
+
+Colab 학습은 `cv/notebooks/train_seg.ipynb` ([사용법](cv/notebooks/README.md)). 로컬에서 돌릴 때:
 
 ```python
 from ultralytics import YOLO

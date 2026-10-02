@@ -1,0 +1,11 @@
+# score = Σ(type_ratio × weight)
+weights:
+  dust: 0.5
+  stain: 0.8
+  grime: 1.0
+  heavy: 1.5
+# 각 등급의 score 하한 (A는 0). A < 0.02 ≤ B < 0.08 ≤ C < 0.20 ≤ D
+thresholds:
+  B: 0.02
+  C: 0.08
+  D: 0.20

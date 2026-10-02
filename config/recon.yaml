@@ -1,0 +1,15 @@
+# 프레임 샘플링
+frame_stride: 5
+max_frames: 300
+# pycolmap SfM
+feature: sift
+max_num_features: 8192
+matcher: sequential   # sequential | exhaustive
+sequential_overlap: 10
+# 외벽 평면 추출 (RANSAC)
+plane_distance_thresh: 0.05   # 상대 단위
+plane_min_inliers: 500
+max_facades: 4
+# 외벽 텍스처 / 창문 그리드
+texture_px_per_unit: 100
+window_snap_tol: 0.3          # 행/열 정렬 허용 오차 (창문 크기 대비)

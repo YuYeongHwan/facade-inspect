@@ -1,0 +1,11 @@
+# YOLO11-seg 창문 분할
+model: models/window-seg.pt
+imgsz: 1280
+conf: 0.25
+iou: 0.5
+max_det: 300
+device: auto          # auto = facade_cv.device.get_device()
+# 기하 후처리
+min_area_px: 400      # 이보다 작은 마스크 제거
+approx_eps: 0.02      # 마스크 윤곽 → 사각형 근사 (윤곽 길이 대비)
+min_rectangularity: 0.7

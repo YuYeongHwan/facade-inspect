@@ -38,7 +38,7 @@ def convert_label(label: np.ndarray, window_rects: list, cfg: dict) -> list[tupl
     cmp, names, eps = cfg["cmp"], cfg["names"], cfg["polygon_eps"]
     index = {int(k): v for k, v in cmp["index"].items()}
     h, w = label.shape
-    min_area = cfg["min_area_ratio"] * h * w
+    min_area = {k: v * h * w for k, v in cfg["min_area_ratio"].items()}
     instances = []
 
     window_px = np.isin(label, [i for i, n in index.items() if n in cmp["window"]])
@@ -48,14 +48,14 @@ def convert_label(label: np.ndarray, window_rects: list, cfg: dict) -> list[tupl
         m = np.zeros_like(window_px)
         m[r0:r1, c0:c1] = window_px[r0:r1, c0:c1]
         polys = mask_to_polygons(m, eps, 0)
-        if not polys or cv2.countNonZero(m.astype(np.uint8)) < min_area:
+        if not polys or cv2.countNonZero(m.astype(np.uint8)) < min_area["window"]:
             continue
         if len(polys) > 1:  # 사각형 안이 여러 조각이면(가림 등) 볼록 껍질로 하나로 — 사각형 밖으로는 안 나간다
             polys = [simplify_polygon(cv2.convexHull(np.vstack(polys).astype(np.float32))[:, 0], eps)]
         instances.append((names.index("window"), polys[0] / [w, h]))
 
     facade_ids = [i for i, n in index.items() if n in cmp["facade"]]
-    for poly in mask_to_polygons(np.isin(label, facade_ids), eps, min_area):
+    for poly in mask_to_polygons(np.isin(label, facade_ids), eps, min_area["facade"]):
         instances.append((names.index("facade"), poly / [w, h]))
     return instances
 

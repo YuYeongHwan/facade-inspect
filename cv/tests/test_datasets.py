@@ -265,3 +265,16 @@ def test_merge_validates_before_overwrite(tmp_path):
     with pytest.raises(ValueError):
         merge(None, [bad], tmp_path / "merged", overwrite=True)
     assert len(list((tmp_path / "merged" / "images").rglob("*.jpg"))) == 3  # 기존 결과 보존
+
+
+def test_cmp_min_area_per_class(tmp_path):
+    cfg = load_config("dataset")
+    cfg["min_area_ratio"] = {"window": 0.001, "facade": 0.01}  # 8px / 80px (100×80 이미지)
+    lab = np.full((H, W), 1, np.uint8)
+    lab[10:70, 10:60] = 2
+    lab[20:24, 20:24] = 3  # 16px 창문 → 유지
+    lab[40:42, 20:22] = 3  # 4px 창문 → 제거
+    lab[10:16, 80:86] = 2  # 36px 외벽 조각 → 제거 (창문 기준이면 남았을 크기)
+    windows, facades = _convert_one(tmp_path, lab, [(20, 20, 24, 24), (20, 40, 22, 42)], cfg)
+    assert _boxes(windows) == [[20, 20, 23, 23]]
+    assert len(facades) == 1

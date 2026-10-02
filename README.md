@@ -76,10 +76,10 @@ uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/c
 - window → **XML 창문 사각형 하나 ∩ (window ∪ blind 픽셀) = 인스턴스 하나**. 붙은 창문은 사각형 단위로 분리되고,
   덧문으로 갈라진 H자 창문은 사각형으로 복원된다. 사각형 밖 blind와 사각형 밖 window 픽셀(전체의 ~1.9%)은 창문이 아니다.
   XML의 `<x>`는 세로, `<y>`는 가로 좌표다 (라벨 PNG와 대조해 확인)
-- base 378장 기준 XML 창문 수 대비 90% 미만인 이미지 21장: 대부분 `min_area_ratio`(0.0005)보다 작은 먼 창문,
-  나머지는 PNG에서 balcony/deco에 완전히 가려진 창문. `min_area_ratio: 0.0001`이면 7장
-- facade, molding, cornice, pillar, sill, deco, blind → facade 하나로 합침 (door/shop/balcony/background 제외).
-  YOLO polygon은 구멍을 표현 못 하므로 외곽을 채운 polygon이고, 창문은 그 위에 겹친다 (`overlap_mask`로 작은 인스턴스가 우선)
+- 작은 인스턴스 제거는 클래스별 `min_area_ratio` (window 0.0001 — 먼 창문도 살림, facade 0.0005)
+- 검증 (XML 창문 사각형 수 대비 변환된 창문 수, 창문 없는 이미지 제외):
+  base 378장 — 90% 미만 7장, 창문 12161/12222 (99.5%) / extended 228장 — 90% 미만 9장, 7737/7823 (98.9%).
+  빠지는 창문은 PNG에서 balcony/deco/shop에 완전히 가려진 경우 (예: cmp_x0173은 창문 10개가 shop 라벨 아래)
 - 매핑은 `config/dataset.yaml`의 `cmp.window` / `cmp.facade`에서 변경
 
 ### 2. Label Studio (자체 드론 데이터)

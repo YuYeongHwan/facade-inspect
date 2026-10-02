@@ -1,10 +1,9 @@
-# YOLO11-seg 창문 분할
-model: models/window-seg.pt
-imgsz: 1280
+# YOLO11-seg 창문/외벽 분할 추론 (facade_cv.detect.predict). 가중치는 --weights (models/seg_window_facade_v{N}.pt)
+imgsz: 1024           # 학습(train_seg.ipynb)과 같게
 conf: 0.25
 iou: 0.5
-max_det: 300
-device: auto          # auto = facade_cv.device.get_device()
+max_det: 500          # CMP에 창문 300개 넘는 이미지가 있음 (학습 노트북 MAX_DET와 같게)
+device: auto          # auto = facade_cv.device.get_device() (cuda > mps > cpu)
 # 기하 후처리
 min_area_px: 400      # 이보다 작은 마스크 제거
 approx_eps: 0.02      # 마스크 윤곽 → 사각형 근사 (윤곽 길이 대비)

@@ -52,7 +52,7 @@ def test_params_match_repo_config(ns):
     assert ns["OWN_OVERSAMPLE"] == 3
     assert ns["STAGE1"]["batch"] == ns["STAGE2"]["batch"] == 0.7  # AutoBatch (GPU 메모리 70%)
     assert isinstance(ns["EVAL_BATCH"], int)  # val은 소수 batch 미지원
-    assert ns["RESUME"] is False and ns["RUN_NAME"] is None
+    assert ns["RESUME"] is False and ns["RUN_NAME"] is None and ns["STAGE1_ONLY"] is False
     assert ns["RUNS_DIR"].startswith(ns["DRIVE_ROOT"])  # 학습 결과는 드라이브에
 
 
@@ -106,7 +106,31 @@ def test_ultralytics_keeps_oversampled_duplicates(ns, merged):
 def test_make_stage_yamls_requires_own_test(ns, tmp_path):
     cmp = _yolo_dir(tmp_path / "cmp", [f"cmp_b{i:04d}" for i in range(5)])
     merge(cmp, [], tmp_path / "merged")
-    with pytest.raises(ValueError, match="test"):
+    with pytest.raises(ValueError, match="STAGE1_ONLY"):
+        ns["make_stage_yamls"](tmp_path / "merged", 3, ns["CLASSES"])
+
+
+def test_make_stage_yamls_stage1_only_cmp_zip(ns, tmp_path):
+    """자체 데이터 없는 CMP만 zip + STAGE1_ONLY: stage1 yaml만, test 키 없음, 목록은 CMP train/val."""
+    cmp = _yolo_dir(tmp_path / "cmp", [f"cmp_b{i:04d}" for i in range(20)])
+    merge(cmp, [], tmp_path / "merged")
+    y = ns["make_stage_yamls"](tmp_path / "merged", 3, ns["CLASSES"], require_own=False)
+    assert set(y) == {"counts", "stage1"} and set(y["counts"]) == {"stage1_train", "stage1_val"}
+    assert sum(y["counts"].values()) == 20
+    data = yaml.safe_load(y["stage1"].read_text())
+    assert "test" not in data and data["val"] == "lists/stage1_val.txt"
+
+
+def test_make_stage_yamls_stage1_only_with_own_zip(ns, merged):
+    """자체 데이터가 들어 있는 zip으로 STAGE1_ONLY를 켜도 동작 (stage2 yaml은 만들어지지만 안 씀)."""
+    y = ns["make_stage_yamls"](merged, 3, ns["CLASSES"], require_own=False)
+    assert {"stage1", "stage2"} <= set(y)
+
+
+def test_make_stage_yamls_rejects_missing_cmp(ns, tmp_path):
+    own = _yolo_dir(tmp_path / "own", [f"flight{g}__0" for g in "ABC"])
+    merge(None, [own], tmp_path / "merged")
+    with pytest.raises(ValueError, match="CMP"):
         ns["make_stage_yamls"](tmp_path / "merged", 3, ns["CLASSES"])
 
 
@@ -151,10 +175,27 @@ def test_model_card_entry(ns):
         "counts": {"own_test": 7}, "stage1": ns["STAGE1"], "stage2": ns["STAGE2"], "oversample": 3,
         "augment": ns["AUGMENT"], "ultralytics": "8.4.171", "gpu": "T4", "seed": 0, "run": "r",
         "eval": {"stage1": ev, "stage2": ev}, "count": {"stage1": cnt, "stage2": cnt}, "count_conf": 0.4, "count_tol": 0.1,
+        "final_stage": "stage2", "eval_set": "자체 test", "eval_images": 7,
     })
     assert entry.startswith("\n## seg_window_facade_v2 — 2026-10-02")
     assert "| stage2 | 0.7500 | 0.5000 | 1.00 | 5.0% | 100.0% |" in entry
-    assert "자체 test셋 7장" in entry
+    assert "평가: 자체 test 7장" in entry and "(stage2 best.pt)" in entry and "자체 train ×3" in entry
+    assert ns["saved_marker"]("r", "stage2") in entry
+
+
+def test_model_card_entry_stage1_only(ns):
+    ev = {"mask_P": 0.9, "mask_R": 0.8, "mask_mAP50": 0.75, "mask_mAP50-95": 0.5}
+    entry = ns["model_card_entry"]({
+        "name": "seg_window_facade_v1", "date": "d", "file": "f.pt", "dataset": "cmp_only.zip",
+        "counts": {"stage1_train": 545, "stage1_val": 61}, "stage1": ns["STAGE1"], "stage2": ns["STAGE2"],
+        "oversample": 3, "augment": ns["AUGMENT"], "ultralytics": "u", "gpu": "g", "seed": 0, "run": "r",
+        "eval": {"stage1": ev}, "count": {"stage1": ns["count_metrics"]([1], [1], 0.1)}, "count_conf": 0.4,
+        "count_tol": 0.1, "final_stage": "stage1", "eval_set": "CMP val", "eval_images": 61,
+    })
+    assert "(stage1 best.pt)" in entry and "Stage2: 없음 (STAGE1_ONLY" in entry
+    assert "평가: CMP val 61장" in entry and "| stage1 |" in entry and "| stage2 |" not in entry
+    # STAGE1_ONLY로 저장한 실행을 Stage2까지 이어 학습하면 표식이 달라 다시 저장 가능
+    assert ns["saved_marker"]("r", "stage1") in entry and ns["saved_marker"]("r", "stage2") not in entry
 
 
 def _ckpt(run_dir, epoch):

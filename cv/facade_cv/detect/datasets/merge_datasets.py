@@ -97,8 +97,9 @@ def merge(
             src = "cmp" if prefix == "cmp__" else "own"
             stats[s][src] = stats[s].get(src, 0) + 1
 
-    data = {"path": str(out.resolve()), **{s: f"images/{s}" for s in SPLITS},
-            "names": dict(enumerate(cfg["names"]))}
+    # test는 비어 있으면(자체 데이터 없이 CMP만) 키를 빼서 빈 디렉토리를 가리키지 않게 한다
+    splits = [s for s in SPLITS if s != "test" or stats["test"]]
+    data = {"path": str(out.resolve()), **{s: f"images/{s}" for s in splits}, "names": dict(enumerate(cfg["names"]))}
     (out / "data.yaml").write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return stats
 

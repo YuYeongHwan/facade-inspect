@@ -4,17 +4,48 @@
 
 YOLO11s-seg 2단계 학습: Stage1 CMP만 → Stage2 CMP + 자체 데이터(자체 train ×3) 파인튜닝.
 자체 test셋으로 window mask mAP50 / mAP50-95와 창문 개수 정확도를 내고, 가중치와 모델 카드를 드라이브에 남긴다.
+자체 데이터가 아직 없으면 `STAGE1_ONLY = True`로 CMP만 학습할 수 있다 (아래 1-A).
 
-### 1. 로컬: 데이터셋 zip 만들기
+### 1. 로컬: 데이터셋 zip 만들기 (레포 루트에서)
 
-루트 README의 "창문/외벽 분할 데이터셋" 순서대로 만든 merge 결과를 zip한다. 자체 데이터가 없으면 노트북이 멈춘다
-(test셋 = 자체 데이터).
+#### 1-A. CMP만 (자체 데이터 없음 → `STAGE1_ONLY = True`)
+
+```bash
+# CMP Facade 다운로드 (base 378장 + extended 228장)
+mkdir -p data/cmp
+curl -L -o data/cmp/CMP_facade_DB_base.zip     https://cmp.felk.cvut.cz/~tylecr1/facade/CMP_facade_DB_base.zip
+curl -L -o data/cmp/CMP_facade_DB_extended.zip https://cmp.felk.cvut.cz/~tylecr1/facade/CMP_facade_DB_extended.zip
+unzip -qo data/cmp/CMP_facade_DB_base.zip -d data/cmp       # -o: 두 zip에 같은 label_names.txt가 있어
+unzip -qo data/cmp/CMP_facade_DB_extended.zip -d data/cmp   #     없으면 덮어쓰기 질문에서 멈춤
+
+# YOLO-seg 변환 → --own 없이 병합 (CMP train 0.9 / val 0.1, test 없음) → zip
+uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/cmp --out data/yolo/cmp
+uv run --project cv python -m facade_cv.detect.datasets.merge_datasets --cmp data/yolo/cmp --out data/yolo/cmp_only
+(cd data/yolo && zip -qr cmp_only.zip cmp_only)
+```
+
+드라이브의 `datasets/cmp_only.zip`에 올리고 노트북 첫 셀에서
+`DATASET_ZIP = f"{DRIVE_ROOT}/datasets/cmp_only.zip"`, `STAGE1_ONLY = True`.
+→ Stage1 학습 → **CMP val**로 평가(mAP·개수 정확도·오버레이) → `seg_window_facade_v{N}.pt` + 모델 카드 저장.
+Stage2와 자체 test 평가는 건너뛴다. (확인: 606장 → train 545 / val 61)
+
+#### 1-B. CMP + 자체 데이터 (기본, 2단계 학습)
+
+1-A의 CMP 변환까지 한 뒤, 루트 README의 Label Studio 순서로 `data/yolo/own`을 만들고:
 
 ```bash
 uv run --project cv python -m facade_cv.detect.datasets.merge_datasets \
     --cmp data/yolo/cmp --own data/yolo/own --out data/yolo/merged
-cd data/yolo && zip -qr merged.zip merged
+(cd data/yolo && zip -qr merged.zip merged)
 ```
+
+자체 데이터 test셋이 비어 있는 zip으로 `STAGE1_ONLY = False`면 노트북이 3번 셀에서 멈춘다.
+
+#### 나중에 자체 데이터가 생기면
+
+CMP만으로 학습한 Stage1을 그대로 쓰고 Stage2만 돌릴 수 있다: 1-B zip을 올리고 `STAGE1_ONLY = False`,
+`STAGE1_WEIGHTS = ".../runs/<그 실행>_stage1/weights/best.pt"` (또는 같은 `RUN_NAME` + `RESUME = True` —
+Stage1은 끝난 것으로 보고 건너뛴다). 최종 Stage가 달라 모델은 새 버전으로 따로 저장된다.
 
 ### 2. Google Drive 배치
 
@@ -36,15 +67,15 @@ MyDrive/facade-inspect/
 
 | 섹션 | 내용 |
 |---|---|
-| 0 | 하이퍼파라미터 — 경로, Stage1/2 학습 설정, 증강, 평가 설정. **여기만 고친다** |
+| 0 | 하이퍼파라미터 — 경로, `RESUME`/`RUN_NAME`, `STAGE1_ONLY`, Stage1/2 학습 설정, 증강, 평가 설정. **여기만 고친다** |
 | 1 | 드라이브 마운트, `pip install ultralytics albumentations` (버전은 로컬 `uv.lock`과 같게 고정) |
 | 2 | 헬퍼 함수 |
-| 3 | zip 압축 해제(`/content/data`), Stage별 이미지 목록·data yaml 생성 |
-| 4–5 | Stage1, Stage2 학습 (조기종료 `patience`). `RESUME`이면 끝난 Stage는 건너뛰고 중단된 Stage는 이어서 |
-| 6 | 자체 test셋 window mask P/R/mAP50/mAP50-95, Stage1 vs Stage2 |
-| 7 | 창문 개수 정확도: 이미지당 \|검출−GT\| (MAE, MAPE, ±10% 이내 비율, 오차 큰 이미지 10장) |
-| 8 | 예측 오버레이 16장 그리드 (자체 test, 부족하면 자체 val로 채움) → `runs/<RUN_NAME>_pred_grid.jpg` |
-| 9 | Stage2 best.pt → `models/seg_window_facade_v{N}.pt` (N 자동 증가), `models/MODEL_CARD.md`에 설정·지표 append. 같은 실행을 두 번 저장하지 않음 |
+| 3 | zip 압축 해제(`/content/data/<zip 이름>`), Stage별 이미지 목록·data yaml 생성, 평가 대상 결정 |
+| 4–5 | Stage1, Stage2 학습 (조기종료 `patience`). `RESUME`이면 끝난 Stage는 건너뛰고 중단된 Stage는 이어서. `STAGE1_ONLY`면 5는 건너뜀 |
+| 6 | window mask P/R/mAP50/mAP50-95 — 자체 test셋 Stage1 vs Stage2 (`STAGE1_ONLY`: CMP val, Stage1만) |
+| 7 | 창문 개수 정확도 (6과 같은 대상): 이미지당 \|검출−GT\| (MAE, MAPE, ±10% 이내 비율, 오차 큰 이미지 10장) |
+| 8 | 최종 모델 예측 오버레이 16장 그리드 (평가 대상, 부족하면 자체 val로 채움) → `runs/<RUN_NAME>_pred_grid.jpg` |
+| 9 | 최종 best.pt(Stage2, `STAGE1_ONLY`면 Stage1) → `models/seg_window_facade_v{N}.pt` (N 자동 증가), `models/MODEL_CARD.md`에 설정·지표·평가 대상 append. 같은 실행·같은 최종 Stage는 두 번 저장하지 않음 |
 
 ### 세션이 끊겼을 때 — `RESUME = True`
 
@@ -84,3 +115,15 @@ cd cv && uv run pytest tests/test_notebook.py
 nbformat 스키마 검증, 모든 코드 셀 파이썬 문법 검사, 하이퍼파라미터·헬퍼 셀 실행
 (Stage 목록 생성, 오버샘플링, 개수 지표, 버전 번호, 모델 카드 포맷, 재개 상태 판정·실행 이름 결정)을 확인한다.
 학습 셀은 실행하지 않는다.
+
+## 학습된 가중치로 예측 (로컬)
+
+```bash
+# 영상 → 프레임 → 예측 오버레이. --images에 io.extract 출력 폴더를 그대로 (frames.json 등 이미지 아닌 파일은 무시)
+uv run --project cv python -m facade_cv.io.extract --video input.mp4 --out runs/insp_001/frames
+uv run --project cv python -m facade_cv.detect.predict \
+    --weights models/seg_window_facade_v1.pt --images runs/insp_001/frames   # → runs/insp_001/pred/*.jpg
+```
+
+디바이스는 cuda > mps > cpu 자동 (`--device cpu`로 지정 가능), 추론 설정은 `config/detect.yaml`
+(imgsz는 학습과 같은 1024). 오버레이는 클래스별 색 마스크 + 왼쪽 위에 `window N  facade M`.

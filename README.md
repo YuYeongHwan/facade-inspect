@@ -14,6 +14,7 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
     io/extract.py   프레임 추출 (노출/블러/ORB 중복 필터) + Live용 iterate_video
     detect/
       augment.py    config/augment.yaml → Ultralytics train 인자
+      predict.py    학습된 가중치로 이미지 폴더 예측 → 오버레이 (io.extract 출력 폴더 그대로 입력)
       datasets/     창문/외벽 분할 데이터셋 도구 (cmp_convert, label_studio/, merge_datasets)
     track/ rectify/ contamination/ recon3d/   (빈 패키지)
   tests/            pytest
@@ -42,6 +43,7 @@ uv run --project cv python -m facade_cv.schema fixtures/result.json   # result.j
 uv run --project cv python -m facade_cv.device                        # 사용할 디바이스 출력
 uv run --project cv python fixtures/make_mock.py                      # 목업 재생성
 uv run --project cv python -m facade_cv.io.extract --video X --out runs/<id>/frames --fps 3 --debug [--flight-id ID]
+uv run --project cv python -m facade_cv.detect.predict --weights models/seg_window_facade_v1.pt --images runs/<id>/frames
 ```
 
 ## 프레임 추출 (facade_cv.io.extract)
@@ -68,7 +70,7 @@ CMP Facade Database (Tyleček & Šára, GCPR 2013, http://cmp.felk.cvut.cz/~tyle
 mkdir -p data/cmp && cd data/cmp
 curl -LO https://cmp.felk.cvut.cz/~tylecr1/facade/CMP_facade_DB_base.zip       # 378장, 36MB
 curl -LO https://cmp.felk.cvut.cz/~tylecr1/facade/CMP_facade_DB_extended.zip   # 228장, 20MB
-unzip -q CMP_facade_DB_base.zip && unzip -q CMP_facade_DB_extended.zip && cd ../..
+unzip -qo CMP_facade_DB_base.zip && unzip -qo CMP_facade_DB_extended.zip && cd ../..   # -o: 공통 label_names.txt 덮어쓰기
 uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/cmp --out data/yolo/cmp
 ```
 

@@ -278,3 +278,12 @@ def test_cmp_min_area_per_class(tmp_path):
     windows, facades = _convert_one(tmp_path, lab, [(20, 20, 24, 24), (20, 40, 22, 42)], cfg)
     assert _boxes(windows) == [[20, 20, 23, 23]]
     assert len(facades) == 1
+
+
+def test_merge_cmp_only_omits_empty_test(tmp_path):
+    """자체 데이터 없이 CMP만 (STAGE1_ONLY 학습용): test 비율 0 → data.yaml에 test 키 없음."""
+    cmp = _yolo_dir(tmp_path / "cmp", [f"cmp_b{i:04d}" for i in range(20)])
+    stats = merge(cmp, [], tmp_path / "merged")
+    assert stats["test"] == {} and sum(stats["train"].values()) + sum(stats["val"].values()) == 20
+    data = yaml.safe_load((tmp_path / "merged" / "data.yaml").read_text())
+    assert "test" not in data and data["train"] == "images/train" and data["val"] == "images/val"

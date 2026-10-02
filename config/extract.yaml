@@ -1,8 +1,9 @@
 # facade_cv.io.extract — 프레임 추출 필터
 blur:
-  threshold: 30       # Laplacian variance 절대 임계값 (max_side 축소 후 기준). 미만이면 제거
-  window_sec: 2       # 상대 컷: ±window_sec 안의 노출 통과 프레임 중
-  percentile: 20      #   블러 점수 하위 N% 미만이면 제거 (0이면 상대 컷 끔)
+  # 두 조건을 모두 만족할 때만 제거 (AND). null인 조건은 끔 → 나머지 조건만으로 판정
+  threshold: 30       # Laplacian variance 절대 임계값 (max_side 축소 후 기준) 미만
+  window_sec: 2       # 그리고 ±window_sec 안의 노출 통과 프레임 중
+  percentile: 20      #   블러 점수 하위 N% 미만
 exposure:
   over_value: 250     # 회색조 ≥ 이 값 = 과노출 픽셀
   under_value: 5      # 회색조 ≤ 이 값 = 저노출 픽셀

@@ -43,7 +43,7 @@ uv run --project cv python -m facade_cv.io.extract --video X --out runs/<id>/fra
 ## 프레임 추출 (facade_cv.io.extract)
 
 target_fps로 샘플링 → 노출 필터(과/저노출 픽셀 비율) → 블러 필터(Laplacian variance가 절대 임계값 `blur.threshold`
-미만이거나 ±`blur.window_sec`초 안에서 하위 `blur.percentile`% 미만이면 제거) → 중복 필터(ORB 호모그래피로 직전 선택
+미만이면서 ±`blur.window_sec`초 안에서 하위 `blur.percentile`% 미만일 때만 제거, null인 조건은 끔) → 중복 필터(ORB 호모그래피로 직전 선택
 프레임과의 겹침 계산, 겹침 70~80% 유지: `dedup.min_motion`/`max_motion`).
 겹침이 max_motion을 넘으면 직전 중복 후보, 그래도 부족하면 그 구간 블러 제거 프레임 중 가장 덜 흐린 것을 살린다(`rescued`).
 매칭 수 부족으로 이동량을 알 수 없으면(`motion: null`, 장면 전환·무늬 없는 벽) 버리지 않고 저장한다.

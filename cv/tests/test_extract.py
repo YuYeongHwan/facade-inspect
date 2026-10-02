@@ -74,7 +74,7 @@ def test_extract_filters(pan_video, tmp_path):
 
 
 def test_dedup_keeps_overlap(pan_video, tmp_path):
-    cfg = _cfg(percentile=0)  # 절대 임계값만 — 중복 필터만 본다
+    cfg = _cfg(percentile=None)  # 절대 임계값만 — 중복 필터만 본다
     m = extract_frames(pan_video, tmp_path / "frames", target_fps=10, cfg=cfg)
     selected = [r for r in m["frames"] if r["selected"]]
     # 샘플 간 이동 ~9% → 2~3 샘플마다 선택, 선택 프레임 간 겹침 70~80%
@@ -94,22 +94,43 @@ def test_static_video_dedup(tmp_path):
 
 
 def test_blur_window_is_local(tmp_path):
-    """앞 3초는 전체적으로 덜 선명(약한 블러). 전역 하위 20% 컷이면 그 구간 대부분이 잘리지만
+    """앞 3초는 전체가 절대 임계값 미만(약한 블러). 전역 하위 20% 컷이면 그 구간 대부분이 잘리지만
     ±2초 윈도우 컷은 구간 안에서만 비교하므로 대부분 살아남아야 한다."""
     soft_until = 90  # 원본 frame index (3초)
     path = _pan_video(tmp_path / "soft.mp4", 300, lambda i, f: cv2.GaussianBlur(f, (5, 5), 0) if i < soft_until else f)
-    m = extract_frames(path, tmp_path / "frames", target_fps=10, cfg=_cfg(threshold=5))  # 상대 컷만 보도록 절대값은 낮게
+    m = extract_frames(path, tmp_path / "frames", target_fps=10)
     soft = [r for r in m["frames"] if r["index"] < soft_until]
 
+    assert all(r["blur"] < 30 for r in soft)  # 절대 조건은 전부 참 → 상대 조건이 판정
     global_cut = np.percentile([r["blur"] for r in m["frames"]], 20)
     assert sum(r["blur"] < global_cut for r in soft) / len(soft) > 0.5  # 전역 컷이었다면 절반 넘게 제거
-    assert sum(r["reason"] == "blur" for r in soft) / len(soft) < 0.35
+    assert 0 < sum(r["reason"] == "blur" for r in soft) / len(soft) < 0.35
 
 
-def test_absolute_blur_threshold(pan_video, tmp_path):
-    m = extract_frames(pan_video, tmp_path / "frames", target_fps=10, cfg=_cfg(threshold=1e9, percentile=0))
-    assert m["num_selected"] == 0
-    assert all(r["reason"] in ("blur", "exposure") for r in m["frames"])
+def test_blur_requires_both_conditions(pan_video, tmp_path):
+    m = extract_frames(pan_video, tmp_path / "frames", target_fps=10)
+    # 선명한 프레임은 로컬 하위 20%여도 절대 임계값 이상이므로 유지 (OR였다면 제거됨)
+    sharp = [r for r in m["frames"] if r["reason"] != "exposure" and r["index"] not in BLUR_IDX]
+    assert any(r["blur"] < np.percentile([o["blur"] for o in sharp], 20) for r in sharp)
+    assert not any(r["reason"] == "blur" for r in sharp)
+    assert all(r["reason"] == "blur" for r in m["frames"] if r["index"] in BLUR_IDX)
+
+
+@pytest.mark.parametrize(
+    ("blur", "expect_removed"),
+    [
+        ({"threshold": 1e9, "percentile": None}, "all"),  # 절대 조건만: 전부 미만 → 전부 제거
+        ({"threshold": 1e9}, "some"),  # 절대는 전부 참이어도 로컬 하위 20%만 제거
+        ({"threshold": None}, "some"),  # 상대 조건만
+        ({"threshold": 0}, "none"),  # 절대 조건이 거짓이면 로컬 하위여도 유지
+    ],
+)
+def test_blur_condition_toggles(pan_video, tmp_path, blur, expect_removed):
+    m = extract_frames(pan_video, tmp_path / "frames", target_fps=10, cfg=_cfg(**blur))
+    candidates = [r for r in m["frames"] if r["reason"] != "exposure"]
+    removed = sum(r["reason"] == "blur" for r in candidates)
+    expected = {"all": len(candidates), "none": 0}.get(expect_removed)
+    assert removed == expected if expected is not None else 0 < removed < len(candidates)
 
 
 def test_blur_gap_rescues_least_blurry(tmp_path):
@@ -120,7 +141,7 @@ def test_blur_gap_rescues_least_blurry(tmp_path):
         return cv2.GaussianBlur(f, (kernels[i], kernels[i]), 0) if i in kernels else f
 
     path = _pan_video(tmp_path / "gap.mp4", N, edit)
-    m = extract_frames(path, tmp_path / "frames", target_fps=10, cfg=_cfg(percentile=0))
+    m = extract_frames(path, tmp_path / "frames", target_fps=10, cfg=_cfg(percentile=None))
     by_idx = {r["index"]: r for r in m["frames"]}
 
     assert all(by_idx[i]["blur"] < 30 for i in kernels)  # 전부 절대 임계값으로 제거되는 블러
@@ -132,7 +153,7 @@ def test_blur_gap_rescues_least_blurry(tmp_path):
 
 def test_rescue_without_gap_is_noop(pan_video, tmp_path):
     """단발 블러 프레임(이동 9%)은 겹침을 깨지 않으므로 살리지 않는다."""
-    m = extract_frames(pan_video, tmp_path / "frames", target_fps=10, cfg=_cfg(percentile=0))
+    m = extract_frames(pan_video, tmp_path / "frames", target_fps=10)
     assert not any(r["rescued"] for r in m["frames"])
 
 
@@ -157,7 +178,7 @@ def test_scene_cut_saves_unknown_motion(tmp_path):
         return other[:, i * SPEED : i * SPEED + W].copy() if i >= cut else f
 
     path = _pan_video(tmp_path / "cut.mp4", N, edit)
-    m = extract_frames(path, tmp_path / "frames", target_fps=10, cfg=_cfg(percentile=0))
+    m = extract_frames(path, tmp_path / "frames", target_fps=10)
     first_after = next(r for r in m["frames"] if r["index"] >= cut)
     assert first_after["selected"] and first_after["motion"] is None
     assert any(r["reason"] == "duplicate" for r in m["frames"] if r["index"] > cut)  # 이후엔 다시 정상 비교

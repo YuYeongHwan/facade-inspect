@@ -138,15 +138,17 @@ def extract_frames(
     if not records:
         raise ValueError(f"no frames decoded: {video_path}")
 
-    # 블러: 절대 임계값 미만 또는 ±window_sec 안의 percentile 미만이면 제거
+    # 블러: 절대 임계값 미만 AND ±window_sec 안의 percentile 미만일 때만 제거. null인 조건은 항상 참으로 본다
     ok = [r for r in records if r["reason"] is None]
     ts = [r["timestamp"] for r in ok]
-    win = blur_cfg["window_sec"]
+    win, pct = blur_cfg["window_sec"], blur_cfg["percentile"]
+    thr = np.inf if blur_cfg["threshold"] is None else blur_cfg["threshold"]
     for r in ok:
         lo, hi = bisect_left(ts, r["timestamp"] - win), bisect_right(ts, r["timestamp"] + win)
-        local = float(np.percentile([o["blur"] for o in ok[lo:hi]], blur_cfg["percentile"]))
-        r["blur_cut"] = round(max(blur_cfg["threshold"], local), 2)
-        if r["blur"] < r["blur_cut"]:
+        local = np.inf if pct is None else float(np.percentile([o["blur"] for o in ok[lo:hi]], pct))
+        cut = min(thr, local)
+        r["blur_cut"] = round(cut, 2) if np.isfinite(cut) else None
+        if r["blur"] < cut:
             r["reason"] = "blur"
 
     # 2차: 중복 필터 + 저장

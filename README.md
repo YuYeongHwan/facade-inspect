@@ -29,7 +29,7 @@ config/             grading.yaml(등급), extract.yaml(프레임 필터), datase
 fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/, windows/)
   make_mock.py      목업 재생성 스크립트
 server/             FastAPI (미구현)
-web/                Next.js (미구현)
+web/                Next.js 대시보드 — 검사 결과 3D·창문 상세, 검출 뷰어 (실행법은 web/README.md)
 data/ runs/ cv/weights/ (gitignore — 가중치·MODEL_CARD.md는 cv/weights/)
 ```
 

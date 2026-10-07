@@ -215,3 +215,17 @@ def test_extract_cli_flight_id(pan_video, tmp_path):
     subprocess.run([sys.executable, "-m", "facade_cv.io.extract", "--video", str(pan_video), "--out", str(out),
                     "--fps", "10", "--flight-id", "F1"], check=True, capture_output=True)
     assert all(p.name.startswith("F1__frame_") for p in out.glob("*.jpg"))
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg 필요")
+def test_rotation_metadata_applied(pan_video, tmp_path):
+    """아이폰 세로 촬영 = 가로 프레임 + 회전 메타데이터. 추출 결과가 눕지 않아야 한다."""
+    import subprocess
+
+    rotated = tmp_path / "rot.mov"
+    subprocess.run(["ffmpeg", "-y", "-v", "error", "-display_rotation", "90", "-i", str(pan_video), "-c", "copy",
+                    str(rotated)], check=True)
+    _, frame = next(iterate_video(rotated))
+    assert frame.shape[:2] == (W, H)
+    m = extract_frames(rotated, tmp_path / "frames", target_fps=10)
+    assert cv2.imread(str(tmp_path / "frames" / m["frames"][0]["file"])).shape[:2] == (W, H)

@@ -75,3 +75,10 @@ def test_predict_empty_folder(tmp_path):
     (tmp_path / "frames" / "frames.json").write_text("{}")
     with pytest.raises(FileNotFoundError, match="no images"):
         predict_folder(tmp_path / "w.pt", tmp_path / "frames")
+
+
+def test_config_weights_path():
+    from facade_cv.config import CONFIG_DIR
+
+    assert load_config("detect")["weights"] == "cv/weights/seg_window_facade_v1.pt"
+    assert (CONFIG_DIR.parent / "cv").is_dir()  # 레포 루트 기준 상대경로

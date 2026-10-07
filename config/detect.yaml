@@ -1,4 +1,5 @@
-# YOLO11-seg 창문/외벽 분할 추론 (facade_cv.detect.predict). 가중치는 --weights (models/seg_window_facade_v{N}.pt)
+# YOLO11-seg 창문/외벽 분할 추론 (facade_cv.detect.predict)
+weights: cv/weights/seg_window_facade_v1.pt  # 레포 루트 기준. --weights로 덮어쓰기
 imgsz: 1024           # 학습(train_seg.ipynb)과 같게
 conf: 0.25
 iou: 0.5

@@ -12,6 +12,7 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
     config.py       config/*.yaml 로더
     pipeline.py     영상 → result.json 전체 파이프라인 (미구현)
     io/extract.py   프레임 추출 (노출/블러/ORB 중복 필터) + Live용 iterate_video
+    io/captures.py  data/raw/videos/captures.csv → building 단위 영상 목록 (건물 단위 split용)
     detect/
       augment.py    config/augment.yaml → Ultralytics train 인자
       predict.py    학습된 가중치로 이미지 폴더 예측 → 오버레이 (io.extract 출력 폴더 그대로 입력)
@@ -43,7 +44,8 @@ uv run --project cv python -m facade_cv.schema fixtures/result.json   # result.j
 uv run --project cv python -m facade_cv.device                        # 사용할 디바이스 출력
 uv run --project cv python fixtures/make_mock.py                      # 목업 재생성
 uv run --project cv python -m facade_cv.io.extract --video X --out runs/<id>/frames --fps 3 --debug [--flight-id ID]
-uv run --project cv python -m facade_cv.detect.predict --weights models/seg_window_facade_v1.pt --images runs/<id>/frames
+uv run --project cv python -m facade_cv.io.captures --videos data/raw/videos                # building별 영상 목록
+uv run --project cv python -m facade_cv.detect.predict --images runs/<id>/frames   # 가중치 기본: config/detect.yaml weights
 ```
 
 ## 프레임 추출 (facade_cv.io.extract)
@@ -56,6 +58,14 @@ target_fps로 샘플링 → 노출 필터(과/저노출 픽셀 비율) → 블�
 결과는 `frames/<flightID>__frame_<index>.jpg` + `frames/frames.json`
 (flightID는 `--flight-id`, 기본은 영상 파일명 — 데이터셋 분할의 그룹 키가 된다. 프레임별 timestamp, blur, blur_cut, 노출 비율, motion, selected, rescued, reason). `--debug`면 `debug/frames_grid.jpg`
 (초록=선택, 하늘=rescued, 빨강=블러, 주황=노출, 회색=중복).
+아이폰 회전 메타데이터(display matrix)는 OpenCV(FFmpeg 백엔드)가 디코딩 시 적용하므로 세로 촬영 영상도 눕지 않는다.
+카메라가 거의 정지한 영상은 이동량이 min_motion 미만이라 대부분 duplicate로 빠지는 것이 정상이다 (COLMAP엔 시차가 필요).
+
+### 촬영 기록 (data/raw/videos/captures.csv)
+
+`file,building,type,date,weather,height_m,note`. 영상은 `data/raw/videos/<building폴더>/` 아래 어디든 두면 되고,
+`load_captures(videos_dir)`가 파일명을 대소문자 무시로 찾아 `{building: [행 + path]}`를 돌려준다.
+엑셀이 저장한 형식(BOM, 행 전체가 따옴표로 감싸짐)도 읽는다.
 
 ## 창문/외벽 분할 데이터셋 (facade_cv.detect.datasets)
 

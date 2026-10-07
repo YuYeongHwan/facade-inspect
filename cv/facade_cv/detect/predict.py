@@ -1,6 +1,6 @@
 """학습된 YOLO-seg 가중치로 이미지 폴더 예측 → 오버레이 이미지 저장 (로컬 CPU/MPS 가능).
 
-python -m facade_cv.detect.predict --weights models/seg_window_facade_v1.pt --images runs/<id>/frames
+python -m facade_cv.detect.predict --images runs/<id>/frames  (--weights 기본: config/detect.yaml)
 --images는 io.extract 출력 폴더(<flightID>__frame_*.jpg + frames.json)를 그대로 받는다 — 이미지가 아닌 파일은 무시.
 출력: --out (기본 <images>/../pred)/<원본 stem>.jpg — 마스크 오버레이 + 클래스별 개수
 """
@@ -10,7 +10,7 @@ from pathlib import Path
 import cv2
 import typer
 
-from facade_cv.config import load_config
+from facade_cv.config import CONFIG_DIR, load_config
 from facade_cv.detect.datasets.yolo import list_images
 from facade_cv.device import get_device
 
@@ -52,11 +52,12 @@ def predict_folder(
 
 
 def main(
-    weights: Path = typer.Option(..., exists=True, dir_okay=False),
+    weights: Path = typer.Option(None, exists=True, dir_okay=False, help="기본: config/detect.yaml weights"),
     images: Path = typer.Option(..., exists=True, file_okay=False, help="이미지 폴더 (io.extract 출력 폴더 그대로 가능)"),
     out: Path = typer.Option(None, help="오버레이 저장 폴더 (기본: <images>/../pred)"),
     device: str = typer.Option(None, help="cpu / mps / 0 (기본: config/detect.yaml, auto = cuda > mps > cpu)"),
 ) -> None:
+    weights = weights or CONFIG_DIR.parent / load_config("detect")["weights"]
     rows = predict_folder(weights, images, out, device=device)
     totals = {k: sum(r[k] for r in rows) for k in rows[0] if k != "image"}
     print(f"{len(rows)} images → {out or images.parent / 'pred'} | total {totals}")

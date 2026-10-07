@@ -82,3 +82,45 @@ def test_config_weights_path():
 
     assert load_config("detect")["weights"] == "cv/weights/seg_window_facade_v1.pt"
     assert (CONFIG_DIR.parent / "cv").is_dir()  # 레포 루트 기준 상대경로
+
+
+@pytest.mark.slow
+def test_segmenter_detections(tiny_weights, extract_out):
+    from facade_cv.detect.segmenter import WindowSegmenter, split_classes
+
+    seg = WindowSegmenter(tiny_weights, device="cpu")
+    img = cv2.imread(str(extract_out / "F1__frame_000000.jpg"))
+    dets = seg.predict(img, conf=0.0)  # 1에폭 모델 — 임계값 0이라야 검출이 나온다
+    assert dets
+    for d in dets:
+        assert d.cls in ("window", "facade") and 0 <= d.conf <= 1
+        assert d.mask.shape == img.shape[:2] and d.mask.dtype == bool
+        assert d.polygon.ndim == 2 and d.polygon.shape[1] == 2 and len(d.bbox) == 4
+    windows, facades = split_classes(dets)
+    assert len(windows) + len(facades) == len(dets)
+
+
+def test_segmenter_missing_weights(tmp_path):
+    from facade_cv.detect.segmenter import WindowSegmenter
+
+    with pytest.raises(FileNotFoundError, match="weights"):
+        WindowSegmenter(tmp_path / "nope.pt")
+
+
+@pytest.mark.slow
+def test_run_cli(tiny_weights, extract_out):
+    import json
+
+    r = subprocess.run([sys.executable, "-m", "facade_cv.detect.run", "--weights", str(tiny_weights),
+                        "--frames", str(extract_out), "--debug", "--device", "cpu"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-2000:]
+    run = extract_out.parent
+    m = json.loads((run / "detect" / "detections.json").read_text())  # 기본 출력: <frames>/../detect
+    assert [i["image"] for i in m["images"]] == [f"F1__frame_{i:06d}.jpg" for i in range(3)]
+    assert all({"counts", "windows", "removed", "fill_candidates", "empty_cells", "warnings"} <= set(i)
+               for i in m["images"])
+    assert (run / "debug" / "detect" / "F1__frame_000000_stages.jpg").is_file()
+    assert (run / "debug" / "detect" / "F1__frame_000000_lines.jpg").is_file()
+    r = subprocess.run([sys.executable, "-m", "facade_cv.detect.run", "--weights", str(tiny_weights)],
+                       capture_output=True, text=True)
+    assert r.returncode != 0  # --image / --frames 둘 다 없음

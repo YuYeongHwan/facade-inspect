@@ -5,7 +5,18 @@ conf: 0.25
 iou: 0.5
 max_det: 500          # CMP에 창문 300개 넘는 이미지가 있음 (학습 노트북 MAX_DET와 같게)
 device: auto          # auto = facade_cv.device.get_device() (cuda > mps > cpu)
-# 기하 후처리
+# 기하 후처리 (facade_cv.detect.postprocess). 정면화 설정은 config/rectify.yaml
 min_area_px: 400      # 이보다 작은 마스크 제거
 approx_eps: 0.02      # 마스크 윤곽 → 사각형 근사 (윤곽 길이 대비)
-min_rectangularity: 0.7
+min_rectangularity: 0.7  # 마스크 면적 / 사각형 면적
+fill_conf_ratio: 0.5  # conf × 이 값 ~ conf 미만 검출 = 격자 빈칸 보완 후보
+facade_filter:
+  margin_ratio: 0.01  # 외벽 마스크를 긴 변 × 이 값만큼 팽창 (경계 근처 창문 허용)
+  min_inside: 0.5     # 창문 면적 중 팽창한 외벽 안 비율이 이보다 작으면 밖
+  max_outside: 0.5    # 밖인 창문 비율이 이보다 크면 외벽 검출 실패로 보고 필터 건너뜀
+grid:
+  gap_ratio: 0.5      # 1D 클러스터링: 정렬한 중심 간격 > 창 크기 중앙값 × 이 값이면 새 행/열
+  size_tol: 0.35      # 같은 열 폭·같은 행 높이 중앙값 대비 상대 차이가 이보다 크면 odd_width/odd_height
+  min_size_members: 3 # 크기 비교는 행/열에 창문이 이 이상일 때만
+  fill_tol: 0.5       # 빈칸 중심 ~ 보완 후보 중심 허용 거리 (열 폭·행 높이 비율)
+  min_occupancy: 0.4  # 채워진 칸 / (행 수 × 열 수)가 이보다 작으면 격자를 못 믿는다 → 빈칸·보완 후보 생략

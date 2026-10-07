@@ -15,13 +15,17 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
     io/captures.py  data/raw/videos/captures.csv → building 단위 영상 목록 (건물 단위 split용)
     detect/
       augment.py    config/augment.yaml → Ultralytics train 인자
-      predict.py    학습된 가중치로 이미지 폴더 예측 → 오버레이 (io.extract 출력 폴더 그대로 입력)
+      segmenter.py  WindowSegmenter — YOLO-seg 래퍼 (config/detect.yaml weights) → Detection(cls, mask, polygon, bbox, conf)
+      predict.py    이미지 폴더 예측 → 마스크 오버레이 (io.extract 출력 폴더 그대로 입력)
+      postprocess.py 마스크 → 4점 사각형 → 외벽 필터 → 격자 정규화 (row/col/flags)
+      run.py        검출 + 후처리 CLI → detect/detections.json (+ --debug 단계별 시각화)
       datasets/     창문/외벽 분할 데이터셋 도구 (cmp_convert, label_studio/, merge_datasets)
-    track/ rectify/ contamination/ recon3d/   (빈 패키지)
+    rectify/homography.py  소실점 두 개로 외벽 정면화 호모그래피 (detect 후처리·T6 공용)
+    track/ contamination/ recon3d/   (빈 패키지)
   tests/            pytest
   notebooks/        Colab 학습 노트북 (train_seg.ipynb — 사용법은 notebooks/README.md)
 config/             grading.yaml(등급), extract.yaml(프레임 필터), dataset.yaml(데이터셋), augment.yaml(학습 증강),
-                    detect.yaml, recon.yaml
+                    detect.yaml(추론·후처리), rectify.yaml(정면화), recon.yaml
 fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/, windows/)
   make_mock.py      목업 재생성 스크립트
 server/             FastAPI (미구현)
@@ -46,6 +50,8 @@ uv run --project cv python fixtures/make_mock.py                      # 목업 �
 uv run --project cv python -m facade_cv.io.extract --video X --out runs/<id>/frames --fps 3 --debug [--flight-id ID]
 uv run --project cv python -m facade_cv.io.captures --videos data/raw/videos                # building별 영상 목록
 uv run --project cv python -m facade_cv.detect.predict --images runs/<id>/frames   # 가중치 기본: config/detect.yaml weights
+uv run --project cv python -m facade_cv.detect.run --frames runs/<id>/frames --debug  # 또는 --image X.jpg
+uv run --project cv python -m facade_cv.rectify.homography --image X.jpg           # 이미지 전체 정면화
 ```
 
 ## 프레임 추출 (facade_cv.io.extract)
@@ -66,6 +72,24 @@ target_fps로 샘플링 → 노출 필터(과/저노출 픽셀 비율) → 블�
 `file,building,type,date,weather,height_m,note`. 영상은 `data/raw/videos/<building폴더>/` 아래 어디든 두면 되고,
 `load_captures(videos_dir)`가 파일명을 대소문자 무시로 찾아 `{building: [행 + path]}`를 돌려준다.
 엑셀이 저장한 형식(BOM, 행 전체가 따옴표로 감싸짐)도 읽는다.
+
+## 창문 검출 후처리 (facade_cv.detect.run)
+
+YOLO-seg는 conf × `fill_conf_ratio`까지 낮춰 한 번 돌리고, conf 미만 검출은 격자 빈칸 보완 후보로만 쓴다.
+
+1. **quad**: 마스크 윤곽 → approxPolyDP 4점(볼록), 안 되면 minAreaRect. 꼭짓점 TL,TR,BR,BL.
+   `min_area_px` 미만(`small`), 직사각형도 `min_rectangularity` 미만(`not_rect`)은 제거
+2. **외벽 필터**: 외벽 마스크(창문 자리 구멍을 메우고 `facade_filter.margin_ratio`만큼 팽창) 밖 창문 제거(`outside_facade`).
+   외벽이 없거나, 창문 bbox 합집합보다 작거나, 창문 `max_outside` 비율 이상이 밖이면 외벽 검출 실패로 보고 건너뛴다(경고)
+3. **격자**: 외벽(실패 시 창문 볼록 껍질) 안 LSD 직선 → 수평·수직 소실점 → 정면화 (`config/rectify.yaml`, 실패 시 원본 좌표).
+   창문 중심 y/x를 1D 클러스터링해 row/col. 제거하지 않고 flag만: `off_grid`(행·열 모두 혼자), `odd_width`/`odd_height`
+   (같은 열 폭/행 높이 중앙값과 `size_tol` 이상 차이). 빈칸에 저신뢰 검출이 있으면 `fill_candidates`(창문 수·`windows`와 별도), 없으면 `empty_cells`.
+   점유율이 `grid.min_occupancy` 미만(코너 건물처럼 여러 면이 섞임)이면 빈칸·보완 후보는 만들지 않는다(경고 `grid_unreliable`)
+
+출력 `<frames>/../detect/detections.json` — 이미지마다 counts(final은 보완 후보 제외), windows(corners, conf, row, col, flags),
+fill_candidates, removed(reason), empty_cells, warnings. `--debug`: `debug/detect/<stem>_stages.jpg`(초록 OK, 주황 flag, 하늘 fill, 빨강 quad 제거,
+자홍 외벽 밖, 노랑 외벽 영역), `_rectified.jpg`(정면화 + row/col + 빈칸 X), `_lines.jpg`(직선 후보 회색, 소실점 inlier 파랑/빨강).
+row/col은 프레임 단위 임시값 — 최종 창문 ID는 3D 외벽 평면에서 정한다.
 
 ## 창문/외벽 분할 데이터셋 (facade_cv.detect.datasets)
 

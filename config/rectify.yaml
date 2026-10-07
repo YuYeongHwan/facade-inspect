@@ -1,0 +1,10 @@
+# facade_cv.rectify.homography — 소실점 기반 외벽 정면화 (detect 후처리, T6 텍스처 공용)
+min_line_ratio: 0.02      # 긴 변 × 이 값보다 짧은 선분은 버림
+axis_tol_deg: 40          # 수평(±tol)/수직(90±tol)으로 분류. 그 사이 사선은 버림 (올려다본 영상의 수직선 수렴 감안)
+vp_inlier_deg: 1.5        # 선분 방향과 (선분 중점→소실점) 방향의 차이가 이 이하면 inlier
+min_lines: 6              # 수평·수직 소실점 각각 inlier가 이보다 적으면 정면화 실패 (None)
+ransac_iters: 500
+default_focal_ratio: 0.8  # 소실점 두 개로 초점거리를 못 구할 때 f = 긴 변 × 이 값 (아이폰 메인 카메라 ≈ 0.75~0.8)
+focal_range: [0.3, 3.0]   # 추정 초점거리(긴 변 대비)가 이 범위 밖이면 기본값 사용
+max_rotation_deg: 60      # 정면화 회전이 이보다 크면 실패로 본다
+out_max_side: 1920        # 정면화 이미지 긴 변

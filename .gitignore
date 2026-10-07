@@ -12,5 +12,6 @@ __pycache__/
 .serena/
 
 # 학습 가중치
+*.pt
 cv/weights/*
 !cv/weights/MODEL_CARD.md

@@ -52,7 +52,7 @@ Stage1은 끝난 것으로 보고 건너뛴다). 최종 Stage가 달라 모델�
 ```
 MyDrive/facade-inspect/
   datasets/merged.zip     ← 업로드
-  models/                 ← 노트북이 seg_window_facade_v{N}.pt, MODEL_CARD.md 생성
+  weights/                ← 노트북이 seg_window_facade_v{N}.pt, MODEL_CARD.md 생성 → 로컬 cv/weights/로 내려받는다
   runs/                   ← 학습 결과(Ultralytics project): <RUN_NAME>_stage1/, <RUN_NAME>_stage2/,
                             <RUN_NAME>_eval/, <RUN_NAME>_pred_grid.jpg — 드라이브라 세션이 끊겨도 남는다
 ```
@@ -75,7 +75,7 @@ MyDrive/facade-inspect/
 | 6 | window mask P/R/mAP50/mAP50-95 — 자체 test셋 Stage1 vs Stage2 (`STAGE1_ONLY`: CMP val, Stage1만) |
 | 7 | 창문 개수 정확도 (6과 같은 대상): 이미지당 \|검출−GT\| (MAE, MAPE, ±10% 이내 비율, 오차 큰 이미지 10장) |
 | 8 | 최종 모델 예측 오버레이 16장 그리드 (평가 대상, 부족하면 자체 val로 채움) → `runs/<RUN_NAME>_pred_grid.jpg` |
-| 9 | 최종 best.pt(Stage2, `STAGE1_ONLY`면 Stage1) → `models/seg_window_facade_v{N}.pt` (N 자동 증가), `models/MODEL_CARD.md`에 설정·지표·평가 대상 append. 같은 실행·같은 최종 Stage는 두 번 저장하지 않음 |
+| 9 | 최종 best.pt(Stage2, `STAGE1_ONLY`면 Stage1) → 드라이브 `weights/seg_window_facade_v{N}.pt` (N 자동 증가), `weights/MODEL_CARD.md`에 설정·지표·평가 대상 append. 같은 실행·같은 최종 Stage는 두 번 저장하지 않음 |
 
 ### 세션이 끊겼을 때 — `RESUME = True`
 
@@ -118,11 +118,14 @@ nbformat 스키마 검증, 모든 코드 셀 파이썬 문법 검사, 하이퍼�
 
 ## 학습된 가중치로 예측 (로컬)
 
+드라이브 `facade-inspect/weights/`의 `seg_window_facade_v{N}.pt`와 `MODEL_CARD.md`를 레포의 `cv/weights/`에 받는다
+(gitignore). 기본 가중치는 `config/detect.yaml`의 `weights` — 새 버전을 쓰려면 여기를 고친다.
+
 ```bash
 # 영상 → 프레임 → 예측 오버레이. --images에 io.extract 출력 폴더를 그대로 (frames.json 등 이미지 아닌 파일은 무시)
 uv run --project cv python -m facade_cv.io.extract --video input.mp4 --out runs/insp_001/frames
 uv run --project cv python -m facade_cv.detect.predict \
-    --weights models/seg_window_facade_v1.pt --images runs/insp_001/frames   # → runs/insp_001/pred/*.jpg
+    --images runs/insp_001/frames   # → runs/insp_001/pred/*.jpg (다른 가중치: --weights cv/weights/seg_window_facade_v2.pt)
 ```
 
 디바이스는 cuda > mps > cpu 자동 (`--device cpu`로 지정 가능), 추론 설정은 `config/detect.yaml`

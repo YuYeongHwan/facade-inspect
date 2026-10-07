@@ -1,6 +1,6 @@
 """학습된 YOLO-seg 예측 → Label Studio import JSON (predictions). 라벨러는 예측 polygon을 고치기만 하면 된다.
 
-python -m facade_cv.detect.datasets.label_studio.prelabel --weights models/window-seg.pt \
+python -m facade_cv.detect.datasets.label_studio.prelabel --weights cv/weights/seg_window_facade_v1.pt \
     --images data/own/raw --out data/own/prelabel.json --url-prefix "/data/local-files/?d=raw/"
 """
 

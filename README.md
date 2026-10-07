@@ -26,7 +26,7 @@ fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/
   make_mock.py      목업 재생성 스크립트
 server/             FastAPI (미구현)
 web/                Next.js (미구현)
-data/ models/ runs/ (gitignore)
+data/ runs/ cv/weights/ (gitignore — 가중치·MODEL_CARD.md는 cv/weights/)
 ```
 
 ## 설치 / 테스트
@@ -100,7 +100,7 @@ uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/c
 2. (선택) 사전 라벨링 — 학습된 모델이 있으면 예측을 import해 라벨러는 수정만 한다:
    ```bash
    uv run --project cv python -m facade_cv.detect.datasets.label_studio.prelabel \
-       --weights models/window-seg.pt --images data/own/raw --out data/own/prelabel.json \
+       --weights cv/weights/seg_window_facade_v1.pt --images data/own/raw --out data/own/prelabel.json \
        --url-prefix "/data/local-files/?d=raw/"   # Label Studio가 이미지를 찾는 URL. 업로드 방식이면 맞게 변경
    ```
    Label Studio에서 `prelabel.json`을 Import (이미지는 local files storage 등으로 연결)

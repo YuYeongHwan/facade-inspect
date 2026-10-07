@@ -9,7 +9,8 @@ __pycache__/
 .next/
 .DS_Store
 .claude/
+.serena/
 
 # 학습 가중치
-cv/weights/
-*.pt
+cv/weights/*
+!cv/weights/MODEL_CARD.md

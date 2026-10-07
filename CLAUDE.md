@@ -21,12 +21,12 @@
 - server/    FastAPI 앱 (`app/`)
 - web/       Next.js 프론트
 - fixtures/  목업 result.json 및 샘플 이미지 (프론트/백엔드 병렬 개발용)
-- data/, models/, runs/  (gitignore)
+- data/, runs/, cv/weights/  (gitignore)
 
 ## 환경
 - Python 3.11, uv 사용. 타입힌트는 3.11 문법(`str | None`)
 - 개발 머신은 Mac(Apple Silicon). torch 디바이스 우선순위: cuda > mps > cpu (facade_cv/device.py 공용 함수 사용)
-- 학습은 Colab(GPU)에서 notebooks/ 노트북으로 수행, 가중치는 models/에 배치
+- 학습은 Colab(GPU)에서 notebooks/ 노트북으로 수행, 가중치는 드라이브 facade-inspect/weights/ → 로컬 cv/weights/에 배치
 - 프론트: pnpm, TypeScript strict
 
 ## 데이터 계약: runs/<inspection_id>/result.json

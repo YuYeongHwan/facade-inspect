@@ -11,7 +11,8 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
     device.py       torch 디바이스 선택 (cuda > mps > cpu)
     config.py       config/*.yaml 로더
     pipeline.py     영상 → result.json 전체 파이프라인 (미구현)
-    io/extract.py   프레임 추출 (노출/블러/ORB 중복 필터) + Live용 iterate_video
+    io/extract.py   프레임 추출 (노출/블러/ORB 중복 필터)
+    io/source.py    실시간 소스 webcam:N / file: / rtsp:// tcp:// udp:// → (timestamp, frame), 재연결·최신 프레임·통계
     io/captures.py  data/raw/videos/captures.csv → building 단위 영상 목록 (건물 단위 split용)
     detect/
       augment.py    config/augment.yaml → Ultralytics train 인자
@@ -22,13 +23,15 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
       datasets/     창문/외벽 분할 데이터셋 도구 (cmp_convert, label_studio/, merge_datasets)
     rectify/homography.py  소실점 두 개로 외벽 정면화 호모그래피 (detect 후처리·T6 공용)
     contamination/grade.py  score → 청소 우선순위 level 1~5 (config/grading.yaml)
+    live/run.py     실시간 창문 검출 (소스 → segmenter + postprocess, 프레임 단위) → 오버레이 + JSON 라인
     track/ recon3d/   (빈 패키지)
   tests/            pytest
   notebooks/        Colab 학습 노트북 (train_seg.ipynb — 사용법은 notebooks/README.md)
 config/             grading.yaml(청소 우선순위 5단계), extract.yaml(프레임 필터), dataset.yaml(데이터셋), augment.yaml(학습 증강),
-                    detect.yaml(추론·후처리), rectify.yaml(정면화), recon.yaml
+                    detect.yaml(추론·후처리), rectify.yaml(정면화), live.yaml(실시간 소스·처리), recon.yaml
 fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/, windows/)
   make_mock.py      목업 재생성 스크립트
+edge/raspberrypi/   드론 탑재 송출·녹화 스크립트 (미검증 — setup.md)
 server/             FastAPI (미구현)
 web/                Next.js 대시보드 — 검사 결과 3D·창문 상세, 검출 뷰어 (실행법은 web/README.md)
 data/ runs/ cv/weights/ (gitignore — 가중치·MODEL_CARD.md는 cv/weights/)
@@ -54,7 +57,34 @@ uv run --project cv python -m facade_cv.detect.predict --images runs/<id>/frames
 uv run --project cv python -m facade_cv.detect.run --frames runs/<id>/frames --debug  # 또는 --image X.jpg
 uv run --project cv python -m facade_cv.rectify.homography --image X.jpg           # 이미지 전체 정면화
 uv run --project cv python -m facade_cv.contamination.grade 0.07                  # score → "3 가급적 청소"
+uv run --project cv python -m facade_cv.io.source --probe                         # 웹캠 장치 번호 (아이폰 연속성 카메라 포함)
+uv run --project cv python -m facade_cv.live.run --source webcam:0 --debug        # 실시간 검출 (아래 "실시간")
 ```
+
+## 실시간 (facade_cv.io.source, facade_cv.live.run)
+
+소스 URI만 바꾸면 같은 코드가 돈다. 설정은 `config/live.yaml`.
+
+| 소스 | 예 | 비고 |
+|---|---|---|
+| `webcam:N` | `webcam:0` | 노트북 카메라, 맥 연속성 카메라(아이폰). 번호는 `io.source --probe`. 맥은 터미널 앱에 카메라 권한 필요 |
+| `file:<경로>` | `file:data/raw/videos/b04_shcool/b04_ground_01.MOV` | 기본 실시간 속도 재생 (`--no-realtime`이면 모든 프레임 처리) |
+| `rtsp://` `tcp://` `udp://` | `rtsp://<파이IP>:8554/cam` | 라즈베리파이 (edge/raspberrypi). OpenCV FFMPEG 백엔드 |
+
+- 끊기면 자동 재연결 (프레임 없이 연속 실패하면 대기 시간을 2배씩, `max_retries: null` = 무한)
+- 실시간 소스는 수신 스레드가 계속 읽고 처리는 항상 최신 프레임만 → 처리가 느려도 지연이 쌓이지 않고 사이 프레임은 건너뛴다
+- 통계: 수신 fps, 지연(수신 → 처리 시작, 네트워크 지연 제외), 건너뜀, 끊김/재연결
+- `live.run`: 프레임을 `max_side`(1280)로 줄여 segmenter(`imgsz` 640 — 비행 후 분석 `detect.yaml`은 1024 그대로) + postprocess → 화면 오버레이(창문 사각형 `#임시ID rRcC`,
+  처리/수신 fps·지연·건너뜀) + JSON 라인 (stdout과 `runs/<id>/live/detections.jsonl`, 스키마 `LiveFrame`).
+  `--record`: `raw.mp4`(수신한 모든 프레임) + `overlay.mp4`. `--debug`: `runs/<id>/debug/live/`에 5초마다 오버레이·단계 시각화.
+  화면에서 `q` 종료, `s` 캡처. 추적(T5)이 없어 창문 id는 프레임마다 바뀐다
+
+## 드론 탑재 (edge/raspberrypi) — 미검증
+
+Raspberry Pi Zero 2 W + Camera Module 3 → `stream.sh` (rpicam-vid H.264 → SD에 TS 조각 녹화 + 파이 안 MediaMTX)
+→ 노트북은 RTSP 또는 TCP 중계(`tcp_relay.sh`)로 수신. systemd로 부팅 시 자동 시작.
+SD 녹화는 모드와 관계없이 카메라 시작부터 계속되고, Wi-Fi·노트북 연결이 끊겨도 끊기지 않는다. **하드웨어 없이 작성했고 실제 장비에서 검증하지 않았다.**
+설치·핫스팟·전원(BEC)·2.4 GHz 공존 점검은 [edge/raspberrypi/setup.md](edge/raspberrypi/setup.md).
 
 ## 프레임 추출 (facade_cv.io.extract)
 

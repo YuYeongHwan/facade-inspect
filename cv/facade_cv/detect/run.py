@@ -23,7 +23,7 @@ COLORS = {"ok": (0, 200, 0), "flagged": (0, 140, 255), "fill": (255, 255, 0), "r
 SHORT = {"off_grid": "off", "odd_width": "W?", "odd_height": "H?", "fill_candidate": "fill"}
 
 
-def _style(w: Window) -> tuple[tuple[int, int, int], str]:
+def window_style(w: Window) -> tuple[tuple[int, int, int], str]:
     if w.reason:
         return COLORS["outside" if w.reason == "outside_facade" else "removed"], w.reason
     cell = "-" if w.row is None else f"r{w.row}c{w.col}"
@@ -35,12 +35,12 @@ def _style(w: Window) -> tuple[tuple[int, int, int], str]:
 def _draw_quads(img: np.ndarray, items: list[tuple[np.ndarray, Window]], scale: float) -> None:
     th = max(2, round(2 * scale))
     for corners, w in items:
-        color, label = _style(w)
+        color, label = window_style(w)
         cv2.polylines(img, [np.round(corners).astype(np.int32)], True, color, th, cv2.LINE_AA)
         put_label(img, label, corners[0] + [3, 16 * scale], 0.5 * scale, color)
 
 
-def _legend(img: np.ndarray, lines: list[str], scale: float) -> None:
+def draw_legend(img: np.ndarray, lines: list[str], scale: float) -> None:
     lh = int(24 * scale)
     w = int(max(cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, 0.55 * scale, 1)[0][0] for t in lines)) + 20
     cv2.rectangle(img, (0, 0), (w, lh * len(lines) + 10), (0, 0, 0), -1)
@@ -58,7 +58,7 @@ def draw_stages(img: np.ndarray, dets: list[Detection], res: PostResult, cfg: di
     _draw_quads(out, [(w.corners, w) for w in res.removed + res.windows + res.fill_candidates], scale)
     c = res.to_dict()["counts"]
     reasons = {r: sum(w.reason == r for w in res.removed) for r in ("small", "not_rect", "outside_facade")}
-    _legend(out, [
+    draw_legend(out, [
         f"raw {c['raw']} -> final {c['final']} (+fill {c['fill_candidates']}) | removed: quad {reasons['small'] + reasons['not_rect']}"
         f" (small {reasons['small']}, not_rect {reasons['not_rect']}), outside_facade {reasons['outside_facade']}",
         f"flagged {c['flagged']}  fill_candidate {c['fill_candidates']}  empty_cells {c['empty_cells']}"

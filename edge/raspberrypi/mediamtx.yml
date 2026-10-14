@@ -1,0 +1,12 @@
+# 미검증. 파이 위 RTSP 서버 — stream.sh(ffmpeg)가 cam 경로로 publish, 노트북이 read.
+# 키 이름은 MediaMTX 버전마다 바뀔 수 있다 — 설치한 버전의 기본 mediamtx.yml과 비교할 것
+logLevel: warn
+rtsp: yes
+rtspAddress: :8554
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+paths:
+  cam:
+    source: publisher

@@ -1,0 +1,18 @@
+# facade_cv.io.source — 영상 소스 (webcam:N / file:경로 / rtsp:// tcp:// udp://)
+source:
+  default_fps: 30         # 소스가 fps를 알려주지 않을 때 (일부 웹캠·스트림)
+  timeout_sec: 5          # 스트림 열기/읽기 타임아웃. 넘으면 끊김으로 보고 재연결
+  reconnect_delay: 0.5    # 프레임 없이 연속 실패할 때 대기 (초), 실패마다 2배
+  reconnect_max_delay: 8
+  max_retries: null       # 프레임 없이 연속 실패 허용 횟수. null = 무한 (비행 중엔 계속 재시도)
+  stats_window_sec: 2     # 수신 fps 계산 구간
+  # OPENCV_FFMPEG_CAPTURE_OPTIONS (환경변수가 이미 있으면 그쪽 우선). TCP: Wi-Fi 손실에도 깨진 프레임 없음, 버퍼 최소화
+  ffmpeg_options: "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay"
+  probe_max_index: 5      # --probe: webcam:0 ~ N 확인
+# facade_cv.live.run
+live:
+  imgsz: 640             # 실시간 YOLO 입력 크기. 비행 후 분석(detect.run)은 config/detect.yaml imgsz(1024) 그대로
+  max_side: 1280          # 검출 전 축소 (긴 변). 4K 녹화도 실시간에 가깝게. JSON corners는 이 해상도 기준
+  record_fps: 30          # --record 영상 fps. 프레임 timestamp에 맞춰 반복/건너뛰어 기록 → 장치가 알려주는 fps가 틀려도 길이가 실제와 같다
+  debug_every_sec: 5      # --debug: 화면 캡처(overlay)·단계 시각화(stages) 저장 간격
+  window_name: facade-inspect live

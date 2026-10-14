@@ -1,0 +1,12 @@
+# 미검증. /etc/systemd/system/에 복사 (setup.md)
+[Unit]
+Description=MediaMTX RTSP server
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/mediamtx /opt/facade-inspect/mediamtx.yml
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+# 미검증. /etc/systemd/system/에 복사 (setup.md)
+[Unit]
+Description=Facade Inspect camera stream + SD recording
+After=network.target mediamtx.service
+Wants=mediamtx.service
+
+[Service]
+User=pi
+EnvironmentFile=/opt/facade-inspect/stream.env
+ExecStart=/opt/facade-inspect/stream.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

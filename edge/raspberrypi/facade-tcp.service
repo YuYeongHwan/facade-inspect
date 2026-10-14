@@ -1,0 +1,16 @@
+# 미검증. MODE=tcp일 때 MediaMTX → tcp://<파이IP>:$TCP_PORT 중계. /etc/systemd/system/에 복사 (setup.md)
+# 노트북 접속이 끝날 때마다 종료 → 재시작해 다음 접속을 기다린다. 녹화(facade-stream)와 무관
+[Unit]
+Description=Facade Inspect TCP relay (MODE=tcp)
+After=mediamtx.service
+Wants=mediamtx.service
+
+[Service]
+User=pi
+EnvironmentFile=/opt/facade-inspect/stream.env
+ExecStart=/opt/facade-inspect/tcp_relay.sh
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

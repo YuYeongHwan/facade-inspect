@@ -1,11 +1,10 @@
-"""영상 프레임 추출 (Post-flight: COLMAP 입력용 키프레임) + Live 순회.
+"""영상 프레임 추출 (Post-flight: COLMAP 입력용 키프레임). Live 소스는 facade_cv.io.source
 
 python -m facade_cv.io.extract --video X --out runs/<id>/frames --fps 3 --debug
 """
 
 import json
 import re
-import time
 from bisect import bisect_left, bisect_right
 from collections.abc import Iterator
 from pathlib import Path
@@ -26,24 +25,17 @@ def default_flight_id(video_path: str | Path) -> str:
     return re.sub(r"_{2,}", "_", re.sub(r"[^\w.-]", "_", Path(video_path).stem)).strip("_") or "flight"
 
 
-def iterate_video(source: str | Path | int, realtime: bool = False) -> Iterator[tuple[float, np.ndarray]]:
-    """(timestamp 초, BGR frame) 순회. realtime=True면 벽시계에 맞춰 재생하고 늦은 프레임은 디코딩 없이 버린다."""
+def iterate_video(source: str | Path | int) -> Iterator[tuple[float, np.ndarray]]:
+    """(timestamp 초, BGR frame) 순회."""
     cap = cv2.VideoCapture(source if isinstance(source, int) else str(source))
     if not cap.isOpened():
         raise FileNotFoundError(f"cannot open video: {source}")
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    start = time.monotonic()
     idx = 0
     try:
         while cap.grab():
             t = idx / fps
             idx += 1
-            if realtime:
-                lag = time.monotonic() - start - t
-                if lag > 1 / fps:
-                    continue
-                if lag < 0:
-                    time.sleep(-lag)
             ok, frame = cap.retrieve()
             if not ok:
                 break

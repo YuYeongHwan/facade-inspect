@@ -35,6 +35,7 @@ planes:
   extent_percentile: [2, 98]    # 외벽 가로 범위 = facade inlier u 좌표 백분위
   up_refine_tol_deg: 35         # 업벡터 보정(up_axis.refine_up)에 쓸 "대략 수직" 평면: 법선이 수평에서 이 각 이내
   up_refine_iters: 10
+  relief_bins: 24               # 외벽 깊이 프로필 δ(u) 구간 수 — 휜 벽 (직선 경로 촬영)을 따라 텍스처·창문을 놓는다
   min_tilt_fix_deg: 0.5          # 면 1개: 창문 세로 변의 기울기 중앙값이 이보다 크면 그만큼 업벡터를 면 안에서 돌린다
 mesh:
   wall_thickness_ratio: 0.05    # 1~2면 벽 판 두께 = 그 면 min(폭, 높이) × 이 값
@@ -44,10 +45,14 @@ ortho:
   min_cos: 0.3                  # 시선과 외벽 법선 cos이 이보다 작으면 (너무 비스듬) 사용 안 함
   jpeg_quality: 92
 windows3d:
+  top_margin_ratio: 0.1         # 외벽 높이 ≥ 창문 윗변 95백분위 × (1 + 이 값) (위층 민무늬 벽은 SfM 점이 적다)
   min_observations: 2           # 이보다 적은 프레임에서만 보인 창문은 버림 (오검출)
-  cluster_dist_ratio: 0.5       # 같은 창문 = 중심 거리 < 창문 크기 중앙값 × 이 값 (평면 좌표)
+  cluster_dist_ratio: 0.8       # 같은 창문 = 중심 거리 < 창문 크기 중앙값 × 이 값 (평면 좌표). b04 스윕: 0.5면 같은 창문이 갈라짐
   max_inside_margin: 0.1        # 투영 코너가 facade 범위 밖으로 이 비율 (폭·높이 대비) 넘게 나가면 다른 면
-  grid_gap_ratio: 0.5           # row/col: 정렬한 중심 간격 > 창 크기 중앙값 × 이 값이면 새 행/열
+  # row/col = 창문 중심 밀도의 봉우리 (windows3d.grid_labels). size = 창 높이(행)·폭(열) 중앙값
+  grid_bandwidth_ratio: 0.25    # 밀도 가우시안 폭 = size × 이 값
+  grid_peak_ratio: 0.25         # 가장 높은 봉우리 × 이 값 미만 봉우리는 버림 (층 사이 오검출)
+  grid_min_sep_ratio: 1.0       # 더 높은 봉우리에서 size × 이 값 안의 봉우리는 버림
   crop_px_per_unit: null        # 창문 crop 해상도. null = 외벽 텍스처와 같게
 path:
   straight_ratio: 0.15          # 카메라 궤적 수평 PCA 둘째/첫째 표준편차 < 이 값이면 "직선 경로" 경고 (깊이 불확실)

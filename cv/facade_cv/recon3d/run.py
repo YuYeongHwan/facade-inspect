@@ -72,7 +72,7 @@ def draw_top_view(points: np.ndarray, fr: FacadeResult | None, facades: list[Fac
     ref = points[fr.kept] if fr is not None and len(points) else points
     xz = np.vstack([ref[:, [0, 2]], cams[:, [0, 2]]]) if len(ref) else cams[:, [0, 2]]
     lo, hi = np.percentile(xz, [1, 99], axis=0)
-    pad = (hi - lo) * 0.08
+    pad = max(hi - lo) * 0.08  # 긴 건물도 짧은 축에 여백 (외벽 법선 화살표·ID가 잘리지 않게)
     lo, hi = lo - pad, hi + pad
     s = (size - 40) / max(hi - lo)
     img = np.full((int((hi - lo)[1] * s) + 40, int((hi - lo)[0] * s) + 40, 3), 20, np.uint8)
@@ -198,7 +198,9 @@ def run_recon(frames: str | Path, detections: str | Path, out: str | Path, debug
                 points, cameras = points @ R.T, [c.rotated(R) for c in cameras]
                 fr = extract_facades(points, cameras, cfg["planes"], sfm.visibility)
         warnings += fr.warnings
-        report["planes"] = {"scene_scale": round(fr.scene, 4), "num_points": len(points),
+        report["planes"] = {"scene_scale": round(fr.scene, 4),
+                            "relief": {f.id: None if f.relief is None else round(float(np.ptp(f.relief[1])), 4)
+                                       for f in fr.facades}, "num_points": len(points),
                             "num_kept": int(fr.kept.sum()), "num_ransac_planes": len(fr.planes),
                             "facades": [{"id": f.id, "normal": f.normal.round(4).tolist(), "inliers": len(f.inliers)}
                                         for f in fr.facades],
@@ -213,11 +215,21 @@ def run_recon(frames: str | Path, detections: str | Path, out: str | Path, debug
     lap("planes")
 
     if degrade_reason is None:
+        wc = cfg["windows3d"]
+        obs = observations_from_detections(det)
+        # 민무늬 위층 외벽은 SfM 점이 적어 높이(포인트 백분위)가 낮게 잡힌다 → 창문이 올라간 높이까지 늘린다
+        lifted = lift_observations(obs, {c.name: c for c in cameras}, fr.facades, wc["max_inside_margin"])
+        if lifted:
+            top = float(np.percentile([x.rect[3] for x in lifted], 95)) * (1 + wc["top_margin_ratio"])
+            if top > max(f.height for f in fr.facades):
+                report["height_from_windows"] = round(top, 4)
+                for f in fr.facades:
+                    f.height = top
         body, facades, kind = build_mesh(fr.facades, cfg["mesh"])
         lap("mesh")
         textures = build_textures(facades, cameras, lambda n: cv2.imread(str(frames / n)), cfg["ortho"])
         lap("ortho")
-        windows, wstats = build_windows(observations_from_detections(det), cameras, facades, cfg["windows3d"])
+        windows, wstats = build_windows(obs, cameras, facades, wc)
         lap("windows3d")
     else:
         warnings.append(f"degraded: {degrade_reason}")

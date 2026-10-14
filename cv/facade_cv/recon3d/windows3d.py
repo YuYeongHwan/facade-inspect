@@ -4,6 +4,7 @@
 T5 추적이 생기면 tracklet마다 track_id를 채워 넣으면 group_observations가 클러스터링 대신 track_id로 묶는다.
 
 관측 4코너 → 카메라 광선 → 가장 가까이 맞는 facade 평면과 교차 → 평면 좌표 사각형 →
+  (facade relief가 있으면 휜 실제 벽 곡면과 교차한 뒤 평면 좌표로 — 텍스처와 같은 곡면이라 서로 맞는다) →
 (track_id 또는 중심 거리 클러스터)로 같은 창문끼리 묶기 → 중앙값 사각형 → row/col (row 1 = 아래층) →
 ID "F{n}-R{rr}-C{cc}". 같은 칸에 둘이면 관측이 많은 쪽만 남긴다.
 """
@@ -13,7 +14,6 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.cluster.hierarchy import fcluster, linkage
 
-from facade_cv.detect.postprocess import cluster_1d
 from facade_cv.recon3d.geometry import CameraView, FacadeFrame
 
 
@@ -89,7 +89,7 @@ def lift_observations(obs: list[WindowObservation], cameras: dict[str, CameraVie
         for f in facades:
             if (dirs @ f.normal >= 0).any():  # 외벽 뒤에서 본 광선
                 continue
-            X, s = f.intersect(origins, dirs)
+            X, s = f.intersect_surface(origins, dirs)
             if np.isnan(s).any():
                 continue
             uv = f.to_uv(X)
@@ -130,15 +130,35 @@ def group_observations(lifted: list[LiftedObservation], dist_ratio: float) -> li
     return groups
 
 
-def assign_grid(windows: list[Window3D], gap_ratio: float) -> int:
+def grid_labels(values: np.ndarray, size: float, cfg: dict) -> np.ndarray:
+    """1D 행(열) 라벨 (값 오름차순 0, 1, …). 창문 중심의 밀도 (가우시안, 폭 = size × bandwidth_ratio)의 봉우리 =
+    행(열). 가장 높은 봉우리 × peak_ratio 미만인 봉우리 (층 사이에 떠 있는 오검출)와 더 높은 봉우리에서
+    size × min_sep_ratio 안의 봉우리는 버리고, 각 창문을 가장 가까운 봉우리에 붙인다.
+    간격 기준 (cluster_1d)은 떠 있는 오검출이 층을 사슬처럼 잇고, 고정 폭 기준은 층 간격에 따라 쪼개거나 합친다."""
+    if len(values) == 1:
+        return np.zeros(1, int)
+    bw = size * cfg["grid_bandwidth_ratio"]
+    xs = np.linspace(values.min() - 3 * bw, values.max() + 3 * bw, 512)
+    dens = np.exp(-0.5 * ((xs[:, None] - values[None]) / bw) ** 2).sum(1)
+    peak = np.flatnonzero((dens[1:-1] >= dens[:-2]) & (dens[1:-1] > dens[2:])) + 1
+    peak = peak[dens[peak] >= cfg["grid_peak_ratio"] * dens.max()]
+    keep: list[int] = []
+    for i in peak[np.argsort(-dens[peak])]:
+        if all(abs(xs[i] - xs[j]) >= size * cfg["grid_min_sep_ratio"] for j in keep):
+            keep.append(i)
+    centers = np.sort(xs[keep])
+    return np.abs(values[:, None] - centers[None]).argmin(1)
+
+
+def assign_grid(windows: list[Window3D], cfg: dict) -> int:
     """facade별 row/col (1부터, row 1 = 가장 낮은 층, col 1 = u가 작은 쪽). 같은 칸 중복은 관측 많은 것만 남김.
     버린 수를 반환."""
     for fid in {w.facade_id for w in windows}:
         ws = [w for w in windows if w.facade_id == fid]
         r = np.array([w.rect for w in ws])
         cu, cv = (r[:, 0] + r[:, 2]) / 2, (r[:, 1] + r[:, 3]) / 2
-        rows = cluster_1d(cv, gap_ratio * np.median(r[:, 3] - r[:, 1]))  # 오름차순 = 아래층부터
-        cols = cluster_1d(cu, gap_ratio * np.median(r[:, 2] - r[:, 0]))
+        rows = grid_labels(cv, np.median(r[:, 3] - r[:, 1]), cfg)  # 오름차순 = 아래층부터
+        cols = grid_labels(cu, np.median(r[:, 2] - r[:, 0]), cfg)
         for w, rr, cc in zip(ws, rows, cols):
             w.row, w.col = int(rr) + 1, int(cc) + 1
     return dedupe_cells(windows)
@@ -172,7 +192,7 @@ def build_windows(obs: list[WindowObservation], cameras: list[CameraView], facad
             outside += 1
             continue
         windows.append(Window3D(f.id, np.clip(r, 0, [f.width, f.height, f.width, f.height]), g))
-    dropped = assign_grid(windows, cfg["grid_gap_ratio"]) if windows else 0
+    dropped = assign_grid(windows, cfg) if windows else 0
     stats = {"observations": len(obs), "lifted": len(lifted), "groups": len(groups), "windows": len(windows),
              "dropped_few_views": sum(len({x.obs.frame for x in g}) < cfg["min_observations"] for g in groups),
              "dropped_outside": outside, "dropped_same_cell": dropped}

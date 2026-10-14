@@ -212,16 +212,34 @@ def extract_facades(points: np.ndarray, cameras: list[CameraView], cfg: dict,
         d = -float(np.median(X @ n))  # 스냅한 법선으로 거리 다시
         f = FacadeFrame("", n, np.zeros(3), 1.0, top - ground, p.inliers)
         on_plane = X - np.outer(X @ n + d, n)
-        u = points[np.concatenate(ext)] @ f.u_axis
+        E = points[np.concatenate(ext)]
+        u = E @ f.u_axis
         u0, u1 = np.percentile(u, cfg["extent_percentile"])
         base = on_plane.mean(0) - (on_plane.mean(0) @ f.u_axis) * f.u_axis
         f.origin = base + u0 * f.u_axis
         f.origin[1] = ground
         f.width = float(u1 - u0)
+        f.relief = wall_relief(E @ f.u_axis, E @ n + d, cfg["relief_bins"])
         facades.append(f)
     for i, f in enumerate(_order_around(facades), 1):
         f.id = f"F{i}"
     return FacadeResult(sorted(facades, key=lambda f: f.id), extra, planes, kept, scene, ground, top, warnings)
+
+
+def wall_relief(s: np.ndarray, depth: np.ndarray, bins: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """가로 위치 s별 벽 깊이 중앙값 (s 구간 bins개, 점 10개 미만 구간은 이웃에서 보간, 3구간 이동평균)."""
+    if len(s) < 10 * bins:
+        return None
+    edges = np.linspace(*np.percentile(s, [1, 99]), bins + 1)
+    c = (edges[:-1] + edges[1:]) / 2
+    k = np.clip(np.digitize(s, edges) - 1, 0, bins - 1)
+    m = np.array([np.median(depth[k == i]) if (k == i).sum() >= 10 else np.nan for i in range(bins)])
+    ok = ~np.isnan(m)
+    if ok.sum() < 3:
+        return None
+    m = np.interp(c, c[ok], m[ok])
+    m = np.convolve(np.pad(m, 1, mode="edge"), np.ones(3) / 3, mode="valid")
+    return c, m
 
 
 def _order_around(facades: list[FacadeFrame]) -> list[FacadeFrame]:

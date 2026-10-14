@@ -27,7 +27,7 @@ def _texel_points(f: FacadeFrame, w: int, h: int, ppu: float) -> np.ndarray:
     ys = np.linspace(0, h, int(np.ceil(h / STEP)) + 1)
     X, Y = np.meshgrid(xs, ys)
     uv = np.stack([X.ravel() / ppu, f.height - Y.ravel() / ppu], 1)
-    return f.to_world(uv).reshape(len(ys), len(xs), 3)
+    return f.surface(uv).reshape(len(ys), len(xs), 3)  # relief(휜 벽)를 따라 샘플링
 
 
 def build_textures(facades: list[FacadeFrame], cameras: list[CameraView], load: Callable[[str], np.ndarray],

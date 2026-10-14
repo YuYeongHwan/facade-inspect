@@ -95,6 +95,9 @@ class FacadeFrame:
 
     normal: 건물 밖을 향함. u_axis = UP × normal (밖에서 봤을 때 오른쪽), v_axis = UP.
     origin: 외벽 왼쪽 아래 (지면). 평면 위 점 = origin + u·u_axis + v·v_axis, 0 ≤ u ≤ width, 0 ≤ v ≤ height
+    relief: 실제 벽의 평면 대비 깊이 δ(s) — s = X·u_axis (origin과 무관해 mesh가 범위를 고쳐도 유지).
+      직선 경로 촬영이면 복원된 긴 벽이 활처럼 휜다. 텍스처 샘플링·창문 위치는 이 곡면 (surface)에서 하고
+      좌표 (u, v)는 평면 기준이라 메시는 평평한 박스 그대로 쓴다.
     """
 
     id: str
@@ -103,6 +106,7 @@ class FacadeFrame:
     width: float
     height: float
     inliers: np.ndarray = field(default_factory=lambda: np.empty(0, int), repr=False)  # planes: 포인트 index
+    relief: tuple[np.ndarray, np.ndarray] | None = field(default=None, repr=False)  # (s 오름차순, δ)
 
     @property
     def u_axis(self) -> np.ndarray:
@@ -126,6 +130,31 @@ class FacadeFrame:
     def to_world(self, uv: np.ndarray) -> np.ndarray:
         uv = np.asarray(uv, float)
         return self.origin + uv[:, :1] * self.u_axis + uv[:, 1:2] * self.v_axis
+
+    def depth_at(self, X: np.ndarray) -> np.ndarray:
+        """(N,3) → 그 가로 위치의 벽 깊이 δ (relief 없으면 0, 범위 밖은 끝값)."""
+        if self.relief is None:
+            return np.zeros(len(X))
+        return np.interp(np.asarray(X) @ self.u_axis, *self.relief)
+
+    def surface(self, uv: np.ndarray) -> np.ndarray:
+        """평면 좌표 (u, v) → 실제 벽 위 점 (relief만큼 법선 방향으로)."""
+        X = self.to_world(uv)
+        return X + self.depth_at(X)[:, None] * self.normal
+
+    def intersect_surface(self, origins: np.ndarray, dirs: np.ndarray, iters: int = 5) -> tuple[np.ndarray, np.ndarray]:
+        """광선과 relief 곡면의 교점 — 평면 교점에서 그 위치의 δ만큼 옮긴 평면과 다시 교차를 반복."""
+        X, s = self.intersect(origins, dirs)
+        if self.relief is None:
+            return X, s
+        for _ in range(iters):
+            d = self.depth_at(np.nan_to_num(X))
+            denom = dirs @ self.normal
+            with np.errstate(divide="ignore", invalid="ignore"):
+                s = -(origins @ self.normal + self.offset - d) / denom
+            s = np.where((np.abs(denom) > 1e-9) & (s > 0), s, np.nan)
+            X = origins + s[:, None] * dirs
+        return X, s
 
     def corners(self) -> np.ndarray:
         """왼쪽 아래, 오른쪽 아래, 오른쪽 위, 왼쪽 위 (밖에서 봤을 때)."""

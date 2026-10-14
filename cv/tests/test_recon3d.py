@@ -368,3 +368,53 @@ def test_project_rejects_points_outside_fov_despite_distortion_foldover():
     assert 0 <= px[0, 0] <= w  # 접힌 투영이 실제로 이미지 안
     assert not cam.project(far)[1][0]
     assert cam.project(np.array([[0.2, 0.1, 1.0]]))[1][0]
+
+
+def test_relief_follows_bowed_wall():
+    """직선 경로 촬영의 휜 벽: 실제 벽이 가운데서 0.8 앞으로 휨. 평평한 평면과 교차하면 보는 각마다 u가 달라 창문이
+    갈라지고, relief(점에서 잰 깊이 프로필)를 쓰면 같은 창문으로 모이고 평면 좌표도 정답과 맞는다."""
+    from dataclasses import replace
+
+    from facade_cv.recon3d.planes import wall_relief
+
+    flat = true_facade(0)
+    flat.id = "F1"
+    bow = lambda u: 0.8 * (1 - (2 * u / flat.width - 1) ** 2)  # noqa: E731
+    rng = np.random.default_rng(3)
+    uv = rng.uniform([0, 0], [flat.width, flat.height], (8000, 2))
+    wall = flat.to_world(uv) + bow(uv[:, :1]) * flat.normal
+    curved = replace(flat, relief=wall_relief(wall @ flat.u_axis, (wall - flat.origin) @ flat.normal, 24))
+    err = np.abs(curved.depth_at(wall) - bow(uv[:, 0]))
+    assert np.median(err) < 0.02 and err.max() < 0.15  # 양 끝은 마지막 구간 값으로 고정돼 조금 크다
+
+    # 관측: 휜 실제 벽 위 창문을 투영
+    cams = cameras_for([0], per_side=16)
+    obs = []
+    for cam in cams:
+        for u0, v0, u1, v1 in window_grid(flat):
+            q = np.array([[u0, v1], [u1, v1], [u1, v0], [u0, v0]])
+            X = flat.to_world(q) + bow(q[:, :1]) * flat.normal
+            px, ok = cam.project(X)
+            if ok.all():
+                obs.append(WindowObservation(cam.name, px + rng.normal(0, 0.3, px.shape), 0.9))
+    cfg = _cfg("windows3d")
+    truth = window_grid(flat)
+
+    def spread(ws):
+        return max(np.abs(np.array([x.rect for x in w.observations]) - w.rect).max() for w in ws)
+
+    plain, _ = build_windows(obs, cams, [flat], cfg)
+    relief, _ = build_windows(obs, cams, [curved], cfg)
+    assert len(relief) == len(truth)
+    assert spread(relief) < 0.1 < spread(plain)
+    for w in relief:
+        assert min(np.abs(t - w.rect).max() for t in truth) < 0.1
+
+
+def test_grid_labels_not_chained_by_strays():
+    """두 층 (v 2, 5) 사이에 오검출이 2.9, 3.6, 4.2에 떠 있어도 층이 하나로 이어지지 않는다."""
+    from facade_cv.recon3d.windows3d import grid_labels
+
+    v = np.array([2.0, 2.1, 1.9, 2.05, 5.0, 5.1, 4.9, 5.05, 2.9, 3.6, 4.2])
+    lab = grid_labels(v, 1.8, _cfg("windows3d"))
+    assert len(set(lab[:4])) == 1 and len(set(lab[4:8])) == 1 and lab[0] < lab[4]

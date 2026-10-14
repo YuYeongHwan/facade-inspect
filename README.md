@@ -24,11 +24,13 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
     rectify/homography.py  소실점 두 개로 외벽 정면화 호모그래피 (detect 후처리·T6 공용)
     contamination/grade.py  score → 청소 우선순위 level 1~5 (config/grading.yaml)
     live/run.py     실시간 창문 검출 (소스 → segmenter + postprocess, 프레임 단위) → 오버레이 + JSON 라인
-    track/ recon3d/   (빈 패키지)
+    recon3d/        3D 복원: sfm(pycolmap) → up_axis(Y-up) → planes(RANSAC 외벽) → mesh(판/L자/박스) →
+                    ortho(정사영 텍스처) → windows3d(창문 ID) → export(glb·result.json). degrade(가상 평면 1개)
+    track/          (빈 패키지)
   tests/            pytest
   notebooks/        Colab 학습 노트북 (train_seg.ipynb — 사용법은 notebooks/README.md)
 config/             grading.yaml(청소 우선순위 5단계), extract.yaml(프레임 필터), dataset.yaml(데이터셋), augment.yaml(학습 증강),
-                    detect.yaml(추론·후처리), rectify.yaml(정면화), live.yaml(실시간 소스·처리), recon.yaml
+                    detect.yaml(추론·후처리), rectify.yaml(정면화), live.yaml(실시간 소스·처리), recon.yaml(3D 복원)
 fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/, windows/)
   make_mock.py      목업 재생성 스크립트
 edge/raspberrypi/   드론 탑재 송출·녹화 스크립트 (미검증 — setup.md)
@@ -57,6 +59,7 @@ uv run --project cv python -m facade_cv.detect.predict --images runs/<id>/frames
 uv run --project cv python -m facade_cv.detect.run --frames runs/<id>/frames --debug  # 또는 --image X.jpg
 uv run --project cv python -m facade_cv.rectify.homography --image X.jpg           # 이미지 전체 정면화
 uv run --project cv python -m facade_cv.contamination.grade 0.07                  # score → "3 가급적 청소"
+uv run --project cv python -m facade_cv.recon3d.run --frames runs/<id>/frames --detections runs/<id>/detect --out runs/<id> --debug
 uv run --project cv python -m facade_cv.io.source --probe                         # 웹캠 장치 번호 (아이폰 연속성 카메라 포함)
 uv run --project cv python -m facade_cv.live.run --source webcam:0 --debug        # 실시간 검출 (아래 "실시간")
 ```
@@ -78,6 +81,31 @@ uv run --project cv python -m facade_cv.live.run --source webcam:0 --debug      
   처리/수신 fps·지연·건너뜀) + JSON 라인 (stdout과 `runs/<id>/live/detections.jsonl`, 스키마 `LiveFrame`).
   `--record`: `raw.mp4`(수신한 모든 프레임) + `overlay.mp4`. `--debug`: `runs/<id>/debug/live/`에 5초마다 오버레이·단계 시각화.
   화면에서 `q` 종료, `s` 캡처. 추적(T5)이 없어 창문 id는 프레임마다 바뀐다
+
+## 3D 복원 (facade_cv.recon3d)
+
+T1 프레임 + T4 검출 → `runs/<id>/result.json`, `building.glb`, `facades/<F>.jpg`, `windows/<id>/crop.jpg`.
+오염 분석(T7) 전이라 창문은 모두 **미분석** (cleaning_level null, web 회색 패널). 설정 `config/recon.yaml`.
+
+1. **sfm**: SIFT → sequential 매칭 (`sequential_overlap` 20, 루프 검출은 `loop_detection` + vocab tree 파일) →
+   incremental mapping. 매핑은 실행마다 달라 시드를 바꿔 최대 `mapping_trials`번, 가장 많이 등록된 모델.
+   카메라 모델 기본 OPENCV (아이폰), 드론 FPV 광각은 OPENCV_FISHEYE. torch와 같은 프로세스에 올리지 않는다
+   (OpenMP 런타임 충돌 — `facade_cv/device.py`)
+2. **up_axis**: 카메라 업벡터 평균 → 대략 수직 평면 법선으로 보정 → Y-up. 면이 1개면 면 안 회전을 법선으로
+   못 정하므로 창문 세로 변 기울기 중앙값으로 보정
+3. **planes**: 통계적 이상치 제거 → numpy 반복 RANSAC (`detect_planes`만 바꾸면 Open3D로 교체) → 수직 평면 →
+   병합 → 2~4면이면 가장 큰 면 기준 직교 격자로 스냅. 법선(밖) 방향은 그 면을 실제로 관측한 카메라(SfM track) 쪽.
+   격자에 안 맞는 면·같은 방향의 작은 면은 실패로 보지 않고 extra로 보고 (같은 방향 면은 외벽 범위에 보탬).
+   임계값은 촬영 거리(포인트→가장 가까운 카메라 중앙값) 비율
+4. **mesh**: 1면 → 두께 있는 판, 2면 직교 → L자, 평행 2면·3~4면 → 박스. 외벽 좌표계 origin/u/v/width/height
+5. **ortho**: texel마다 각 프레임으로 투영 (왜곡·어안 포함, 화각 밖은 왜곡 전에 제외) → 가장 정면인 K개 median
+6. **windows3d**: `WindowObservation`(프레임, 4코너, track_id) → 광선-평면 교차 → 평면 좌표 클러스터링
+   (T5 tracklet이 생기면 track_id로 묶음) → 중앙값 사각형 → row(아래층 = 1)/col → `F{n}-R{rr}-C{cc}`
+7. **degrade**: SfM 실패·등록 부족·외벽 0개면 창문이 가장 많은 프레임을 정면화한 가상 평면 1개 + T4 row/col.
+   `meta.recon_status`에 mode·면 수·등록률·경고 (직선 촬영 경로, extra 평면 등)
+
+`--debug`: `runs/<id>/debug/recon/` points_planes.ply (외벽별 색, extra 주황), cameras.ply (궤적),
+top_view.jpg (위에서 본 포인트·외벽·궤적), `<F>_windows.jpg` (텍스처 위 창문 ID). 리포트 `runs/<id>/recon/report.json`.
 
 ## 드론 탑재 (edge/raspberrypi) — 미검증
 

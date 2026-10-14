@@ -1,6 +1,6 @@
 import { SourceBadge, ToggleChip } from "@/components/ui";
-import { LEVEL_STYLES } from "@/lib/palette";
-import { type CleaningLevel, type InspectionResult, LEVELS } from "@/lib/types";
+import { filterStyle } from "@/lib/palette";
+import { type InspectionResult, LEVEL_FILTERS, type LevelFilter, levelOf } from "@/lib/types";
 
 export default function SummaryBar({
   result,
@@ -10,14 +10,17 @@ export default function SummaryBar({
 }: {
   result: InspectionResult;
   source?: "mock" | "run";
-  visibleLevels: Set<CleaningLevel>;
-  onToggleLevel: (lv: CleaningLevel) => void;
+  visibleLevels: Set<LevelFilter>;
+  onToggleLevel: (lv: LevelFilter) => void;
 }) {
   const total = result.windows.length;
   const counts = Object.fromEntries(
-    LEVELS.map((lv) => [lv, result.windows.filter((w) => w.cleaning_level === lv).length]),
-  ) as Record<CleaningLevel, number>;
-  const avg = total ? result.windows.reduce((s, w) => s + w.score, 0) / total : 0;
+    LEVEL_FILTERS.map((lv) => [lv, result.windows.filter((w) => levelOf(w) === lv).length]),
+  ) as Record<LevelFilter, number>;
+  const scores = result.windows.flatMap((w) => (w.score === null ? [] : [w.score]));
+  const avg = scores.length ? scores.reduce((s, x) => s + x, 0) / scores.length : null;
+  // 미분석은 있을 때만 막대·칩에 보인다
+  const shown = LEVEL_FILTERS.filter((lv) => lv !== "unanalyzed" || counts[lv]);
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-neutral-800 px-4 py-3">
       <div>
@@ -28,7 +31,7 @@ export default function SummaryBar({
         </div>
       </div>
       <Stat label="전체 창문" value={total.toString()} />
-      <Stat label="평균 점수" value={avg.toFixed(3)} />
+      <Stat label="평균 점수" value={avg === null ? "—" : avg.toFixed(3)} />
       <div className={`rounded-lg border px-3 py-1 ${counts[5] ? "border-red-500 bg-red-500/15" : "border-neutral-800"}`}>
         <div className={`text-xs ${counts[5] ? "font-semibold text-red-300" : "text-neutral-500"}`}>우선 청소</div>
         <div className={`text-lg font-bold tabular-nums ${counts[5] ? "text-red-400" : ""}`}>{counts[5]}개</div>
@@ -36,14 +39,14 @@ export default function SummaryBar({
       <div className="min-w-56 flex-1">
         <div className="mb-1 text-xs text-neutral-500">청소 우선순위 분포</div>
         <div className="flex h-3 overflow-hidden rounded-full bg-neutral-800" role="img" aria-label="청소 우선순위 분포">
-          {LEVELS.map((lv) =>
+          {shown.map((lv) =>
             counts[lv] ? (
               <div
                 key={lv}
-                title={`${lv} ${LEVEL_STYLES[lv].label}: ${counts[lv]}`}
+                title={`${filterStyle(lv).label}: ${counts[lv]}`}
                 style={{
                   width: `${(counts[lv] / total) * 100}%`,
-                  backgroundColor: LEVEL_STYLES[lv].color,
+                  backgroundColor: filterStyle(lv).color,
                   opacity: visibleLevels.has(lv) ? 1 : 0.2,
                 }}
               />
@@ -52,9 +55,10 @@ export default function SummaryBar({
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {LEVELS.map((lv) => (
-          <ToggleChip key={lv} on={visibleLevels.has(lv)} onClick={() => onToggleLevel(lv)} color={LEVEL_STYLES[lv].color}>
-            {lv} {LEVEL_STYLES[lv].label} <span className="tabular-nums text-neutral-400">{counts[lv]}</span>
+        {shown.map((lv) => (
+          <ToggleChip key={lv} on={visibleLevels.has(lv)} onClick={() => onToggleLevel(lv)} color={filterStyle(lv).color}>
+            {lv === "unanalyzed" ? "" : `${lv} `}
+            {filterStyle(lv).label} <span className="tabular-nums text-neutral-400">{counts[lv]}</span>
           </ToggleChip>
         ))}
       </div>

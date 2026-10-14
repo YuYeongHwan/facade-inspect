@@ -5,8 +5,16 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { type ComponentRef, type RefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { inspectionAssetUrl } from "@/lib/api";
-import { LEVEL_STYLES } from "@/lib/palette";
-import { type CleaningLevel, type Facade, type InspectionResult, LEVELS, type Window } from "@/lib/types";
+import { filterStyle, LEVEL_STYLES, UNANALYZED_STYLE } from "@/lib/palette";
+import {
+  type CleaningLevel,
+  type Facade,
+  type InspectionResult,
+  type LevelFilter,
+  LEVELS,
+  levelOf,
+  type Window,
+} from "@/lib/types";
 
 type Controls = ComponentRef<typeof OrbitControls>;
 type View = { position: THREE.Vector3; target: THREE.Vector3 };
@@ -91,7 +99,7 @@ function WindowPanel({
   onSelect: (id: string) => void;
 }) {
   const geom = useMemo(() => quadGeometry(panel.corners), [panel]);
-  const color = LEVEL_STYLES[panel.window.cleaning_level].color;
+  const color = filterStyle(levelOf(panel.window)).color;
   const urgent = panel.window.cleaning_level === 5; // 우선 청소는 평소에도 진하고 굵게
   const id = panel.window.id;
   return (
@@ -164,7 +172,7 @@ export default function BuildingViewer({
 }: {
   inspectionId: string;
   result: InspectionResult;
-  visibleLevels: Set<CleaningLevel>;
+  visibleLevels: Set<LevelFilter>;
   selectedId: string | null;
   hoveredId: string | null;
   onHover: (id: string | null) => void;
@@ -175,7 +183,13 @@ export default function BuildingViewer({
     const box = new THREE.Box3().setFromPoints(result.building.facades.flatMap(facadeCorners));
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3()).length();
-    const position = center.clone().add(new THREE.Vector3(0.9, 0.45, 1.3).normalize().multiplyScalar(size * 1.4));
+    // 첫 외벽(F1)의 앞 오른쪽 위에서 — 목업(F1 법선 +z, u +x)이면 (0.9, 0.45, 1.3) 방향
+    const f1 = result.building.facades[0];
+    const dir = new THREE.Vector3(...f1.normal)
+      .multiplyScalar(1.3)
+      .addScaledVector(new THREE.Vector3(...f1.u_axis), 0.9)
+      .addScaledVector(new THREE.Vector3(...f1.v_axis), 0.45);
+    const position = center.clone().add(dir.normalize().multiplyScalar(size * 1.4));
     return { home: { position, target: center }, size };
   }, [result]);
   const panels = useMemo(() => buildPanels(result, size * 0.002), [result, size]);
@@ -209,7 +223,7 @@ export default function BuildingViewer({
           <FacadeTexture key={f.id} facade={f} url={inspectionAssetUrl(inspectionId, f.texture)} lift={size * 0.0005} />
         ))}
         {panels
-          .filter((p) => visibleLevels.has(p.window.cleaning_level))
+          .filter((p) => visibleLevels.has(levelOf(p.window)))
           .map((p) => (
             <WindowPanel
               key={p.window.id}
@@ -219,12 +233,12 @@ export default function BuildingViewer({
               onSelect={onSelect}
             />
           ))}
-        {hovered && visibleLevels.has(hovered.window.cleaning_level) && (
+        {hovered && visibleLevels.has(levelOf(hovered.window)) && (
           <Html position={hovered.center} center style={{ pointerEvents: "none" }} zIndexRange={[20, 0]}>
             <div className="-translate-y-8 whitespace-nowrap rounded-md border border-neutral-700 bg-neutral-900/95 px-2 py-1 text-xs text-neutral-100 shadow-lg">
               <span className="font-mono">{hovered.window.id}</span>
-              <span className="ml-2 font-bold" style={{ color: LEVEL_STYLES[hovered.window.cleaning_level].color }}>
-                {hovered.window.cleaning_level} {hovered.window.cleaning_label}
+              <span className="ml-2 font-bold" style={{ color: filterStyle(levelOf(hovered.window)).color }}>
+                {hovered.window.cleaning_level ?? ""} {hovered.window.cleaning_label}
               </span>
             </div>
           </Html>
@@ -243,13 +257,13 @@ export default function BuildingViewer({
       >
         전체 보기
       </button>
-      <Legend />
+      <Legend unanalyzed={result.windows.some((w) => w.cleaning_level === null)} />
     </div>
   );
 }
 
-/** 패널 색 범례: level · 라벨 · score 구간 (높은 level이 위). */
-function Legend() {
+/** 패널 색 범례: level · 라벨 · score 구간 (높은 level이 위). 미분석 창문이 있으면 맨 아래 회색. */
+function Legend({ unanalyzed }: { unanalyzed: boolean }) {
   return (
     <ul className="pointer-events-none absolute bottom-3 left-3 hidden space-y-1 rounded-md border border-neutral-800 bg-neutral-900/85 px-2.5 py-2 text-xs sm:block">
       {LEVELS.toReversed().map((lv) => {
@@ -265,6 +279,13 @@ function Legend() {
           </li>
         );
       })}
+      {unanalyzed && (
+        <li className="flex items-center gap-2 text-neutral-400">
+          <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: UNANALYZED_STYLE.color }} />
+          <span className="w-20">{UNANALYZED_STYLE.label}</span>
+          <span className="text-neutral-500">오염 분석 전</span>
+        </li>
+      )}
     </ul>
   );
 }

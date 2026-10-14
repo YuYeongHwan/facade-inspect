@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
-import { LEVEL_STYLES } from "@/lib/palette";
+import { LEVEL_STYLES, UNANALYZED_STYLE } from "@/lib/palette";
 import type { CleaningLevel } from "@/lib/types";
 
-/** 청소 우선순위 배지 "5 우선 청소". 5(우선 청소)만 채운 빨강 + 글로우로 가장 눈에 띄게, 나머지는 옅은 틴트. */
-export function LevelBadge({ level, size = "sm" }: { level: CleaningLevel; size?: "sm" | "lg" }) {
-  const { label, color } = LEVEL_STYLES[level];
+/** 청소 우선순위 배지 "5 우선 청소". 5(우선 청소)만 채운 빨강 + 글로우로 가장 눈에 띄게, 나머지는 옅은 틴트.
+ * level null = 미분석 (회색, 번호 없음). */
+export function LevelBadge({ level, size = "sm" }: { level: CleaningLevel | null; size?: "sm" | "lg" }) {
+  const { label, color } = level === null ? UNANALYZED_STYLE : LEVEL_STYLES[level];
   const urgent = level === 5;
   const cls = size === "lg" ? "gap-1.5 px-2.5 py-1 text-sm" : "gap-1 px-1.5 py-0.5 text-[11px]";
   return (
@@ -13,9 +14,9 @@ export function LevelBadge({ level, size = "sm" }: { level: CleaningLevel; size?
         urgent ? "text-white shadow-[0_0_10px_rgba(239,68,68,0.6)]" : ""
       }`}
       style={urgent ? { backgroundColor: color, borderColor: color } : { color, borderColor: `${color}66`, backgroundColor: `${color}1a` }}
-      aria-label={`청소 우선순위 ${level}단계 ${label}`}
+      aria-label={level === null ? `청소 우선순위 ${label}` : `청소 우선순위 ${level}단계 ${label}`}
     >
-      <span className="tabular-nums">{level}</span>
+      {level !== null && <span className="tabular-nums">{level}</span>}
       {label}
     </span>
   );

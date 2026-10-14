@@ -9,7 +9,10 @@ if (!r.success) {
   console.error(JSON.stringify(r.error.issues, null, 2));
   process.exit(1);
 }
-const bad = r.data.windows.filter((w) => w.cleaning_label !== LEVEL_STYLES[w.cleaning_level].label);
+// 미분석(level null)은 zod가 라벨까지 검사한다
+const bad = r.data.windows.filter(
+  (w) => w.cleaning_level !== null && w.cleaning_label !== LEVEL_STYLES[w.cleaning_level].label,
+);
 if (bad.length) {
   console.error(`cleaning_label != palette label: ${bad.map((w) => w.id).join(", ")}`);
   process.exit(1);

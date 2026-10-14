@@ -7,6 +7,7 @@
 - facade_rect: 외벽 로컬 좌표 [u0, v0, u1, v1] (origin 기준, u_axis/v_axis 방향, 3D와 같은 단위)
 - row/col: 1부터. row는 v(위) 방향, col은 u 방향으로 증가
 - 경로(mesh, texture, images.*)는 result.json이 있는 디렉토리 기준 상대경로
+- 오염 분석 전(미분석) 창문: cleaning_level/score/type_ratios/images.heatmap·overlay = null, cleaning_label = "미분석"
 """
 
 import re
@@ -19,7 +20,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # 청소 우선순위 level 1(청소 불필요)~5(우선 청소). 임계값·라벨은 config/grading.yaml
 CleaningLevel = Annotated[int, Field(ge=1, le=5)]
-LevelKey = Literal["1", "2", "3", "4", "5"]
+LevelKey = Literal["1", "2", "3", "4", "5", "unanalyzed"]
+UNANALYZED_LABEL = "미분석"
 ContaminationType = Literal["dust", "stain", "grime", "heavy"]
 Ratio = Annotated[float, Field(ge=0.0, le=1.0)]
 Vec3 = tuple[float, float, float]
@@ -32,12 +34,22 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ReconStatus(_Model):
+    """3D 복원 결과 (facade_cv.recon3d). degraded = SfM/평면 실패로 가상 평면 1개 + 2D 격자."""
+
+    mode: Literal["3d", "degraded"]
+    num_facades: int = Field(ge=0)
+    registered_ratio: Ratio | None  # SfM 등록 프레임 / 입력 프레임 (SfM 실패면 null)
+    warnings: list[str]
+
+
 class Meta(_Model):
     video: str
     fps: float = Field(gt=0)
     frames_used: int = Field(ge=0)
     scale_known: bool
     created_at: datetime
+    recon_status: ReconStatus | None = None
 
 
 class Facade(_Model):
@@ -71,8 +83,8 @@ class TypeRatios(_Model):
 
 class WindowImages(_Model):
     crop: str
-    heatmap: str
-    overlay: str
+    heatmap: str | None  # 미분석이면 null
+    overlay: str | None
 
 
 class Window(_Model):
@@ -82,11 +94,11 @@ class Window(_Model):
     col: int = Field(ge=1)
     facade_rect: tuple[float, float, float, float]
     corners_3d: tuple[Vec3, Vec3, Vec3, Vec3]
-    cleaning_level: CleaningLevel
+    cleaning_level: CleaningLevel | None  # null = 미분석
     cleaning_label: str = Field(min_length=1)
-    score: float = Field(ge=0)
+    score: float | None = Field(ge=0)
     contamination: list[Contamination]
-    type_ratios: TypeRatios
+    type_ratios: TypeRatios | None
     images: WindowImages
     num_views: int = Field(ge=0)
 
@@ -98,6 +110,11 @@ class Window(_Model):
         u0, v0, u1, v1 = self.facade_rect
         if not (u0 < u1 and v0 < v1):
             raise ValueError(f"facade_rect must satisfy u0<u1, v0<v1: {self.facade_rect}")
+        if self.cleaning_level is None:
+            if self.cleaning_label != UNANALYZED_LABEL or self.score is not None or self.type_ratios is not None:
+                raise ValueError(f"window {self.id}: unanalyzed needs label {UNANALYZED_LABEL!r}, score/type_ratios null")
+        elif self.score is None or self.type_ratios is None:
+            raise ValueError(f"window {self.id}: analyzed window needs score and type_ratios")
         return self
 
 
@@ -127,6 +144,7 @@ class InspectionResult(_Model):
         if self.summary.total != len(self.windows):
             raise ValueError(f"summary.total {self.summary.total} != {len(self.windows)} windows")
         counts = {str(lv): sum(w.cleaning_level == lv for w in self.windows) for lv in range(1, 6)}
+        counts["unanalyzed"] = sum(w.cleaning_level is None for w in self.windows)
         if {k: self.summary.level_counts.get(k, 0) for k in counts} != counts:
             raise ValueError(f"summary.level_counts != actual {counts}")
         return self

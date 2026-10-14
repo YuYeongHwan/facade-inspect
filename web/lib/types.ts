@@ -8,7 +8,13 @@ export const LEVELS = [1, 2, 3, 4, 5] as const;
 export const CONTAMINATION_TYPES = ["dust", "stain", "grime", "heavy"] as const;
 
 export const CleaningLevel = z.literal(LEVELS);
-const LevelKey = z.enum(["1", "2", "3", "4", "5"]);
+const LevelKey = z.enum(["1", "2", "3", "4", "5", "unanalyzed"]);
+// 오염 분석(T7) 전 창문: cleaning_level/score/type_ratios/images.heatmap·overlay = null
+export const UNANALYZED_LABEL = "미분석";
+/** 필터·범례·분포 단위: level 1~5 + 미분석 */
+export type LevelFilter = z.infer<typeof CleaningLevel> | "unanalyzed";
+export const LEVEL_FILTERS: readonly LevelFilter[] = [...LEVELS, "unanalyzed"];
+export const levelOf = (w: { cleaning_level: z.infer<typeof CleaningLevel> | null }): LevelFilter => w.cleaning_level ?? "unanalyzed";
 export const ContaminationType = z.enum(CONTAMINATION_TYPES);
 const Ratio = z.number().min(0).max(1);
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
@@ -17,12 +23,21 @@ const NonNegInt = z.number().int().min(0);
 
 const WINDOW_ID_RE = /^(?<facade>.+)-R(?<row>\d{2,})-C(?<col>\d{2,})$/;
 
+// 3D 복원 결과 (facade_cv.recon3d). degraded = SfM/평면 실패로 가상 평면 1개 + 2D 격자
+export const ReconStatus = z.strictObject({
+  mode: z.enum(["3d", "degraded"]),
+  num_facades: NonNegInt,
+  registered_ratio: Ratio.nullable(),
+  warnings: z.array(z.string()),
+});
+
 export const Meta = z.strictObject({
   video: z.string(),
   fps: z.number().gt(0),
   frames_used: NonNegInt,
   scale_known: z.boolean(),
   created_at: z.iso.datetime({ offset: true, local: true }),
+  recon_status: ReconStatus.nullish(),
 });
 
 export const Facade = z.strictObject({
@@ -49,7 +64,7 @@ export const Contamination = z.strictObject({
 
 export const TypeRatios = z.strictObject({ dust: Ratio, stain: Ratio, grime: Ratio, heavy: Ratio });
 
-export const WindowImages = z.strictObject({ crop: z.string(), heatmap: z.string(), overlay: z.string() });
+export const WindowImages = z.strictObject({ crop: z.string(), heatmap: z.string().nullable(), overlay: z.string().nullable() });
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
@@ -61,11 +76,11 @@ export const Window = z
     col: z.number().int().min(1),
     facade_rect: z.tuple([z.number(), z.number(), z.number(), z.number()]),
     corners_3d: z.tuple([Vec3, Vec3, Vec3, Vec3]),
-    cleaning_level: CleaningLevel,
+    cleaning_level: CleaningLevel.nullable(),
     cleaning_label: z.string().min(1),
-    score: z.number().min(0),
+    score: z.number().min(0).nullable(),
     contamination: z.array(Contamination),
-    type_ratios: TypeRatios,
+    type_ratios: TypeRatios.nullable(),
     images: WindowImages,
     num_views: NonNegInt,
   })
@@ -77,6 +92,13 @@ export const Window = z
     const [u0, v0, u1, v1] = w.facade_rect;
     if (!(u0 < u1 && v0 < v1)) {
       ctx.addIssue({ code: "custom", message: `facade_rect must satisfy u0<u1, v0<v1: ${w.facade_rect}` });
+    }
+    if (w.cleaning_level === null) {
+      if (w.cleaning_label !== UNANALYZED_LABEL || w.score !== null || w.type_ratios !== null) {
+        ctx.addIssue({ code: "custom", message: `window ${w.id}: unanalyzed needs label ${UNANALYZED_LABEL}, score/type_ratios null` });
+      }
+    } else if (w.score === null || w.type_ratios === null) {
+      ctx.addIssue({ code: "custom", message: `window ${w.id}: analyzed window needs score and type_ratios` });
     }
   });
 
@@ -103,8 +125,8 @@ export const InspectionResult = z
       if (!facadeIds.includes(w.facade_id)) issue(`window ${w.id}: unknown facade_id ${w.facade_id}`);
     }
     if (r.summary.total !== r.windows.length) issue(`summary.total ${r.summary.total} != ${r.windows.length} windows`);
-    for (const lv of LEVELS) {
-      const actual = r.windows.filter((w) => w.cleaning_level === lv).length;
+    for (const lv of LEVEL_FILTERS) {
+      const actual = r.windows.filter((w) => levelOf(w) === lv).length;
       if ((r.summary.level_counts[`${lv}`] ?? 0) !== actual) issue(`summary.level_counts.${lv} != actual ${actual}`);
     }
   });

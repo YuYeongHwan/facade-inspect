@@ -138,7 +138,7 @@ def facade_filter(
     return [w for w in windows if not w.reason], [w for w in windows if w.reason], None, region
 
 
-def _cluster_1d(values: np.ndarray, gap: float) -> np.ndarray:
+def cluster_1d(values: np.ndarray, gap: float) -> np.ndarray:
     """정렬 후 이웃 간격 > gap에서 끊는다. 라벨은 값 오름차순 (row 0 = 위, col 0 = 왼쪽)."""
     order = np.argsort(values)
     labels = np.empty(len(values), int)
@@ -164,8 +164,8 @@ def regularize_grid(
     if not windows:
         return [], [], None
     c, wd, ht = _geometry(windows, rect)
-    rows = _cluster_1d(c[:, 1], gc["gap_ratio"] * np.median(ht))
-    cols = _cluster_1d(c[:, 0], gc["gap_ratio"] * np.median(wd))
+    rows = cluster_1d(c[:, 1], gc["gap_ratio"] * np.median(ht))
+    cols = cluster_1d(c[:, 0], gc["gap_ratio"] * np.median(wd))
     on = np.ones(len(windows), bool)
     if len(windows) >= 3:
         on = (np.bincount(rows)[rows] > 1) | (np.bincount(cols)[cols] > 1)
@@ -177,8 +177,8 @@ def regularize_grid(
 
     # off_grid를 뺀 창문으로 다시 묶어 row/col 번호를 0부터 연속으로
     idx = np.flatnonzero(on)
-    rows = _cluster_1d(c[idx, 1], gc["gap_ratio"] * np.median(ht[idx]))
-    cols = _cluster_1d(c[idx, 0], gc["gap_ratio"] * np.median(wd[idx]))
+    rows = cluster_1d(c[idx, 1], gc["gap_ratio"] * np.median(ht[idx]))
+    cols = cluster_1d(c[idx, 0], gc["gap_ratio"] * np.median(wd[idx]))
     for i, r, k in zip(idx, rows, cols):
         windows[i].row, windows[i].col = int(r), int(k)
     for labels, size, flag in ((cols, wd[idx], "odd_width"), (rows, ht[idx], "odd_height")):
@@ -220,7 +220,7 @@ def regularize_grid(
     return empty, fills, None
 
 
-def _window_hull(windows: list[Window], shape: tuple[int, int]) -> np.ndarray | None:
+def window_hull(windows: list[Window], shape: tuple[int, int]) -> np.ndarray | None:
     """창문들의 볼록 껍질을 창 크기 중앙값만큼 팽창한 영역 (외벽 마스크 대신 직선 검출 범위)."""
     if not windows:
         return None
@@ -255,7 +255,7 @@ def postprocess(image: np.ndarray, dets: list[Detection], cfg: dict | None = Non
         weak = [w for w in weak if _inside_fraction(w, region) >= cfg["facade_filter"]["min_inside"]]
 
     # c) 정면화 + 격자
-    line_region = region if region is not None else _window_hull(kept, image.shape[:2])
+    line_region = region if region is not None else window_hull(kept, image.shape[:2])
     rect = estimate_rectification(image, line_region, rect_cfg)
     if rect is None:
         warnings.append("rectification_failed: grid on image coordinates")

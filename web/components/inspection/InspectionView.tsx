@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Status } from "@/components/ui";
 import { getInspection, listInspections } from "@/lib/api";
-import { type CleaningLevel, LEVELS } from "@/lib/types";
+import { LEVEL_FILTERS, type LevelFilter, levelOf } from "@/lib/types";
 import { useData } from "@/lib/useData";
 import BuildingViewer from "./BuildingViewer";
 import SummaryBar from "./SummaryBar";
@@ -14,23 +14,23 @@ export default function InspectionView({ id }: { id: string }) {
   const { data: result, error } = useData(`inspection/${id}`, () => getInspection(id));
   const index = useData("inspections", listInspections);
   const source = index.data?.find((i) => i.id === id)?.source;
-  const [visibleLevels, setVisibleLevels] = useState<Set<CleaningLevel>>(() => new Set(LEVELS));
+  const [visibleLevels, setVisibleLevels] = useState<Set<LevelFilter>>(() => new Set(LEVEL_FILTERS));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const close = useCallback(() => setSelectedId(null), []);
 
   const visibleWindows = useMemo(
-    () => result?.windows.filter((w) => visibleLevels.has(w.cleaning_level)) ?? [],
+    () => result?.windows.filter((w) => visibleLevels.has(levelOf(w))) ?? [],
     [result, visibleLevels],
   );
   if (!result) return <Status error={error} />;
   const selected = result.windows.find((w) => w.id === selectedId) ?? null;
 
-  const toggleLevel = (lv: CleaningLevel) => {
+  const toggleLevel = (lv: LevelFilter) => {
     const n = new Set(visibleLevels);
     if (!n.delete(lv)) n.add(lv);
     setVisibleLevels(n);
-    if (selected && !n.has(selected.cleaning_level)) setSelectedId(null); // 숨긴 level의 창문은 상세도 닫는다
+    if (selected && !n.has(levelOf(selected))) setSelectedId(null); // 숨긴 level의 창문은 상세도 닫는다
   };
 
   return (

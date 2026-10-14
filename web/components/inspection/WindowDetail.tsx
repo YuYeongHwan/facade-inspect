@@ -40,7 +40,10 @@ export default function WindowDetail({
       return n;
     });
   const hovered = hoverPoly === null ? null : w.contamination[hoverPoly];
-  const maxRatio = Math.max(0.05, ...Object.values(w.type_ratios));
+  const ratios = w.type_ratios; // null = 미분석 (T7 전)
+  const maxRatio = ratios ? Math.max(0.05, ...Object.values(ratios)) : 1;
+  const heatmap = w.images.heatmap;
+  const layerOptions = heatmap ? LAYERS : LAYERS.filter((l) => l.key !== "heatmap");
 
   return (
     <aside
@@ -57,7 +60,7 @@ export default function WindowDetail({
         </div>
         <div className="text-right">
           <div className="text-xs text-neutral-500">점수</div>
-          <div className="font-semibold tabular-nums">{w.score.toFixed(3)}</div>
+          <div className="font-semibold tabular-nums">{w.score === null ? "—" : w.score.toFixed(3)}</div>
         </div>
         <button
           type="button"
@@ -71,7 +74,7 @@ export default function WindowDetail({
 
       <div className="space-y-4 p-4">
         <div className="flex flex-wrap gap-1.5">
-          {LAYERS.map((l) => (
+          {layerOptions.map((l) => (
             <ToggleChip key={l.key} on={layers.has(l.key)} onClick={() => toggle(l.key)}>
               {l.label}
             </ToggleChip>
@@ -86,9 +89,9 @@ export default function WindowDetail({
             className="block w-full"
             style={{ opacity: layers.has("crop") ? 1 : 0 }}
           />
-          {layers.has("heatmap") && (
+          {heatmap && layers.has("heatmap") && (
             <img
-              src={inspectionAssetUrl(inspectionId, w.images.heatmap)}
+              src={inspectionAssetUrl(inspectionId, heatmap)}
               alt=""
               className="absolute inset-0 h-full w-full opacity-80"
             />
@@ -125,27 +128,31 @@ export default function WindowDetail({
           )}
         </div>
         <p className="text-xs text-neutral-500">
-          오염 영역 {w.contamination.length}개 — 영역에 마우스를 올리면 유형·면적비를 표시합니다.
+          {ratios
+            ? `오염 영역 ${w.contamination.length}개 — 영역에 마우스를 올리면 유형·면적비를 표시합니다.`
+            : "미분석 — 오염 분석(T7) 전입니다. 3D 복원 결과의 창문 위치·이미지만 있습니다."}
         </p>
 
-        <section>
-          <h3 className="mb-2 text-xs font-medium text-neutral-400">유형별 면적 비율</h3>
-          <ul className="space-y-1.5">
-            {CONTAMINATION_TYPES.map((t) => (
-              <li key={t} className="flex items-center gap-2 text-sm">
-                <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: TYPE_COLORS[t] }} />
-                <span className="w-16 shrink-0">{TYPE_LABELS[t]}</span>
-                <span className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-800">
-                  <span
-                    className="block h-full rounded-full"
-                    style={{ width: `${(w.type_ratios[t] / maxRatio) * 100}%`, backgroundColor: TYPE_COLORS[t] }}
-                  />
-                </span>
-                <span className="w-14 text-right tabular-nums text-neutral-300">{pct(w.type_ratios[t])}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {ratios && (
+          <section>
+            <h3 className="mb-2 text-xs font-medium text-neutral-400">유형별 면적 비율</h3>
+            <ul className="space-y-1.5">
+              {CONTAMINATION_TYPES.map((t) => (
+                <li key={t} className="flex items-center gap-2 text-sm">
+                  <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: TYPE_COLORS[t] }} />
+                  <span className="w-16 shrink-0">{TYPE_LABELS[t]}</span>
+                  <span className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-800">
+                    <span
+                      className="block h-full rounded-full"
+                      style={{ width: `${(ratios[t] / maxRatio) * 100}%`, backgroundColor: TYPE_COLORS[t] }}
+                    />
+                  </span>
+                  <span className="w-14 text-right tabular-nums text-neutral-300">{pct(ratios[t])}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </aside>
   );

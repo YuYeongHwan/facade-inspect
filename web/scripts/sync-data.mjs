@@ -44,7 +44,7 @@ function syncInspection(resultPath, source) {
   const files = [
     r.building.mesh,
     ...r.building.facades.map((f) => f.texture),
-    ...r.windows.flatMap((w) => Object.values(w.images)),
+    ...r.windows.flatMap((w) => Object.values(w.images).filter(Boolean)), // 미분석 창문은 heatmap·overlay = null
   ];
   copy(resultPath, join(dst, "result.json"));
   for (const f of new Set(files)) copy(join(src, f), join(dst, f));

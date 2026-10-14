@@ -35,9 +35,12 @@ export default function WindowList({
       .toSorted((a, b) => {
         const x = a[sort.key];
         const y = b[sort.key];
+        // 미분석(null)은 정렬 방향과 관계없이 맨 뒤
+        if ((x === null) !== (y === null)) return x === null ? 1 : -1;
         const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
         // 같은 level 안에서는 score 높은 순
-        return sign * c || (sort.key === "cleaning_level" ? b.score - a.score : 0) || a.id.localeCompare(b.id);
+        const byScore = sort.key === "cleaning_level" ? (b.score ?? 0) - (a.score ?? 0) : 0;
+        return sign * c || byScore || a.id.localeCompare(b.id);
       });
   }, [windows, query, sort]);
 
@@ -94,7 +97,7 @@ export default function WindowList({
               <span className="flex w-24">
                 <LevelBadge level={w.cleaning_level} />
               </span>
-              <span className="w-14 text-right tabular-nums">{w.score.toFixed(3)}</span>
+              <span className="w-14 text-right tabular-nums">{w.score === null ? "—" : w.score.toFixed(3)}</span>
             </button>
           </li>
         ))}

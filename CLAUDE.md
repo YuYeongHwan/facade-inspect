@@ -64,6 +64,9 @@ server와 web(TS 타입)은 이를 따른다. 좌표 규칙:
 }
 ```
 오염 유형 enum: dust(먼지), stain(얼룩), grime(때), heavy(심한 오염)
+미분석 창문 (오염 분석 T7 전, recon3d 출력): cleaning_level=null, cleaning_label="미분석", score=null,
+type_ratios=null, images.heatmap/overlay=null, contamination=[]. summary.level_counts에 "unanalyzed" 키. web은 회색 패널
+meta.recon_status (선택): {"mode": "3d"|"degraded", "num_facades", "registered_ratio", "warnings": [...]}
 
 ## 청소 우선순위 규칙 (facade_cv/contamination/grade.py)
 관리자가 라벨만 보고 청소 여부를 판단하도록 5단계. 임계값·라벨·색은 config/grading.yaml (web/lib/palette.ts와 동기, 테스트로 검사)

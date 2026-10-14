@@ -1,19 +1,24 @@
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
+from facade_cv.config import load_config
 from facade_cv.schema import InspectionResult, load_result
 
-FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
+ROOT = Path(__file__).resolve().parents[2]
+FIXTURES = ROOT / "fixtures"
+WEB = ROOT / "web"
 
 
 def test_fixture_result_valid():
     r = load_result(FIXTURES / "result.json")
     assert len(r.building.facades) == 4
     assert r.summary.total == len(r.windows) == 20
-    assert all(r.summary.grade_counts[g] > 0 for g in "ABCD")
+    assert all(r.summary.level_counts[str(lv)] > 0 for lv in range(1, 6))
     assert any(w.contamination for w in r.windows)
 
 
@@ -30,11 +35,14 @@ def test_fixture_files_exist():
     [
         lambda d: d["windows"][0].update(facade_id="F9"),
         lambda d: d["windows"][0].update(id="F1-R09-C09"),
-        lambda d: d["windows"][0].update(grade="E"),
+        lambda d: d["windows"][0].update(cleaning_level=6),
+        lambda d: d["windows"][0].update(cleaning_level=0),
+        lambda d: d["windows"][0].update(cleaning_label=""),
+        lambda d: d["windows"][0].update(grade="A"),
         lambda d: d["windows"][0]["contamination"].append({"type": "mold", "area_ratio": 0.1, "polygon": [[0, 0], [1, 0], [1, 1]]}),
         lambda d: d["windows"][0]["contamination"].append({"type": "dust", "area_ratio": 0.1, "polygon": [[0, 0], [1.5, 0], [1, 1]]}),
         lambda d: d["summary"].update(total=99),
-        lambda d: d["summary"]["grade_counts"].update(A=0),
+        lambda d: d["summary"]["level_counts"].update({"1": 0}),
         lambda d: d.update(extra_field=1),
     ],
 )
@@ -43,3 +51,18 @@ def test_invalid_rejected(mutate):
     mutate(data)
     with pytest.raises(ValidationError):
         InspectionResult.model_validate(data)
+
+
+@pytest.mark.skipif(not (shutil.which("node") and (WEB / "node_modules/zod").exists()), reason="web 의존성 없음")
+def test_fixture_passes_zod():
+    """같은 result.json이 web zod 스키마도 통과하고, palette.ts LEVELS가 grading.yaml과 같은지."""
+    out = subprocess.run(
+        ["node", "scripts/validate-result.mjs", str(FIXTURES / "result.json")],
+        cwd=WEB, capture_output=True, text=True,
+    )
+    assert out.returncode == 0, out.stderr
+    web_levels = json.loads(out.stdout)
+    cfg = {lv["level"]: lv for lv in load_config("grading")["levels"]}
+    assert {int(k): v for k, v in web_levels.items()} == {
+        k: {"label": lv["label"], "min": lv["min_score"], "color": lv["color"]} for k, lv in cfg.items()
+    }

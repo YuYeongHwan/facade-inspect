@@ -21,10 +21,11 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
       run.py        검출 + 후처리 CLI → detect/detections.json (+ --debug 단계별 시각화)
       datasets/     창문/외벽 분할 데이터셋 도구 (cmp_convert, label_studio/, merge_datasets)
     rectify/homography.py  소실점 두 개로 외벽 정면화 호모그래피 (detect 후처리·T6 공용)
-    track/ contamination/ recon3d/   (빈 패키지)
+    contamination/grade.py  score → 청소 우선순위 level 1~5 (config/grading.yaml)
+    track/ recon3d/   (빈 패키지)
   tests/            pytest
   notebooks/        Colab 학습 노트북 (train_seg.ipynb — 사용법은 notebooks/README.md)
-config/             grading.yaml(등급), extract.yaml(프레임 필터), dataset.yaml(데이터셋), augment.yaml(학습 증강),
+config/             grading.yaml(청소 우선순위 5단계), extract.yaml(프레임 필터), dataset.yaml(데이터셋), augment.yaml(학습 증강),
                     detect.yaml(추론·후처리), rectify.yaml(정면화), recon.yaml
 fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/, windows/)
   make_mock.py      목업 재생성 스크립트
@@ -52,6 +53,7 @@ uv run --project cv python -m facade_cv.io.captures --videos data/raw/videos    
 uv run --project cv python -m facade_cv.detect.predict --images runs/<id>/frames   # 가중치 기본: config/detect.yaml weights
 uv run --project cv python -m facade_cv.detect.run --frames runs/<id>/frames --debug  # 또는 --image X.jpg
 uv run --project cv python -m facade_cv.rectify.homography --image X.jpg           # 이미지 전체 정면화
+uv run --project cv python -m facade_cv.contamination.grade 0.07                  # score → "3 가급적 청소"
 ```
 
 ## 프레임 추출 (facade_cv.io.extract)
@@ -173,6 +175,7 @@ YOLO("yolo11s-seg.pt").train(data="data/yolo/merged/data.yaml", **train_augment_
 
 ## 목업 (fixtures/)
 
-박스 건물(12×24×8, 상대 단위) 외벽 4면(F1~F4), 창문 20개(등급 A8/B6/C4/D2).
-오염 polygon은 래스터 면적으로 `type_ratios`·`score`를 계산하고 `config/grading.yaml`로 등급을 매긴다.
+박스 건물(12×24×8, 상대 단위) 외벽 4면(F1~F4), 창문 20개(청소 우선순위 level 1~5 = 6/5/4/3/2).
+오염 polygon은 래스터 면적으로 `type_ratios`·`score`를 계산하고 `contamination/grade.py`(`config/grading.yaml`)로 level을 매긴다.
+`cv/tests/test_schema.py`가 같은 result.json을 pydantic과 web zod(`web/scripts/validate-result.mjs`) 양쪽으로 검증한다.
 `result.json` 안의 경로는 모두 `fixtures/` 기준 상대경로다.

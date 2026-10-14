@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- 정적/백엔드 원본 이미지를 그대로 쓴다 (최적화 불필요, 크기 미상) */
 import { useEffect, useState } from "react";
-import { GradeBadge, ToggleChip } from "@/components/ui";
+import { LevelBadge, ToggleChip } from "@/components/ui";
 import { inspectionAssetUrl } from "@/lib/api";
 import { pct, TYPE_COLORS, TYPE_LABELS } from "@/lib/palette";
 import { CONTAMINATION_TYPES, type Window } from "@/lib/types";
@@ -48,7 +48,7 @@ export default function WindowDetail({
       className="fixed inset-x-0 bottom-0 z-30 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-neutral-800 bg-neutral-950/95 shadow-2xl backdrop-blur lg:inset-x-auto lg:bottom-0 lg:right-0 lg:top-14 lg:max-h-none lg:w-[420px] lg:rounded-none lg:border-l lg:border-t-0"
     >
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-neutral-800 bg-neutral-950/95 px-4 py-3">
-        <GradeBadge grade={w.grade} size="lg" />
+        <LevelBadge level={w.cleaning_level} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="truncate font-mono text-sm">{w.id}</div>
           <div className="text-xs text-neutral-500">

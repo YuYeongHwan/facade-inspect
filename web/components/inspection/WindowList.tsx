@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { GradeBadge } from "@/components/ui";
+import { LevelBadge } from "@/components/ui";
 import type { Window } from "@/lib/types";
 
-type SortKey = "id" | "row" | "grade" | "score";
+type SortKey = "id" | "row" | "cleaning_level" | "score";
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: "id", label: "ID", className: "flex-1 text-left" },
   { key: "row", label: "층", className: "w-10 text-right" },
-  { key: "grade", label: "등급", className: "w-10 text-center" },
+  { key: "cleaning_level", label: "우선순위", className: "w-24 text-left" },
   { key: "score", label: "점수", className: "w-14 text-right" },
 ];
 
@@ -26,7 +26,7 @@ export default function WindowList({
   onSelect: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "score", desc: true });
+  const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "cleaning_level", desc: true });
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
     const sign = sort.desc ? -1 : 1;
@@ -36,7 +36,8 @@ export default function WindowList({
         const x = a[sort.key];
         const y = b[sort.key];
         const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
-        return sign * c || a.id.localeCompare(b.id);
+        // 같은 level 안에서는 score 높은 순
+        return sign * c || (sort.key === "cleaning_level" ? b.score - a.score : 0) || a.id.localeCompare(b.id);
       });
   }, [windows, query, sort]);
 
@@ -62,7 +63,7 @@ export default function WindowList({
             key={c.key}
             type="button"
             className={`${c.className} hover:text-neutral-200 ${sort.key === c.key ? "text-neutral-200" : ""}`}
-            onClick={() => setSort((s) => ({ key: c.key, desc: s.key === c.key ? !s.desc : c.key === "score" }))}
+            onClick={() => setSort((s) => ({ key: c.key, desc: s.key === c.key ? !s.desc : c.key === "score" || c.key === "cleaning_level" }))}
           >
             {c.label}
             {sort.key === c.key && (sort.desc ? " ↓" : " ↑")}
@@ -90,8 +91,8 @@ export default function WindowList({
             >
               <span className="flex-1 truncate font-mono text-xs">{w.id}</span>
               <span className="w-10 text-right tabular-nums text-neutral-400">{w.row}층</span>
-              <span className="flex w-10 justify-center">
-                <GradeBadge grade={w.grade} />
+              <span className="flex w-24">
+                <LevelBadge level={w.cleaning_level} />
               </span>
               <span className="w-14 text-right tabular-nums">{w.score.toFixed(3)}</span>
             </button>

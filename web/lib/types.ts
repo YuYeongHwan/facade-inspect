@@ -3,10 +3,12 @@
 // row/col은 1부터, row는 v(위) 방향으로 증가. 경로는 result.json 디렉토리 기준 상대경로.
 import { z } from "zod";
 
-export const GRADES = ["A", "B", "C", "D"] as const;
+// 청소 우선순위 level 1(청소 불필요)~5(우선 청소). 임계값·라벨·색은 config/grading.yaml → lib/palette.ts LEVELS
+export const LEVELS = [1, 2, 3, 4, 5] as const;
 export const CONTAMINATION_TYPES = ["dust", "stain", "grime", "heavy"] as const;
 
-export const Grade = z.enum(GRADES);
+export const CleaningLevel = z.literal(LEVELS);
+const LevelKey = z.enum(["1", "2", "3", "4", "5"]);
 export const ContaminationType = z.enum(CONTAMINATION_TYPES);
 const Ratio = z.number().min(0).max(1);
 const Vec3 = z.tuple([z.number(), z.number(), z.number()]);
@@ -59,7 +61,8 @@ export const Window = z
     col: z.number().int().min(1),
     facade_rect: z.tuple([z.number(), z.number(), z.number(), z.number()]),
     corners_3d: z.tuple([Vec3, Vec3, Vec3, Vec3]),
-    grade: Grade,
+    cleaning_level: CleaningLevel,
+    cleaning_label: z.string().min(1),
     score: z.number().min(0),
     contamination: z.array(Contamination),
     type_ratios: TypeRatios,
@@ -79,7 +82,7 @@ export const Window = z
 
 export const Summary = z.strictObject({
   total: NonNegInt,
-  grade_counts: z.partialRecord(Grade, z.number().int()),
+  level_counts: z.partialRecord(LevelKey, z.number().int()),
 });
 
 export const InspectionResult = z
@@ -100,13 +103,13 @@ export const InspectionResult = z
       if (!facadeIds.includes(w.facade_id)) issue(`window ${w.id}: unknown facade_id ${w.facade_id}`);
     }
     if (r.summary.total !== r.windows.length) issue(`summary.total ${r.summary.total} != ${r.windows.length} windows`);
-    for (const g of GRADES) {
-      const actual = r.windows.filter((w) => w.grade === g).length;
-      if ((r.summary.grade_counts[g] ?? 0) !== actual) issue(`summary.grade_counts.${g} != actual ${actual}`);
+    for (const lv of LEVELS) {
+      const actual = r.windows.filter((w) => w.cleaning_level === lv).length;
+      if ((r.summary.level_counts[`${lv}`] ?? 0) !== actual) issue(`summary.level_counts.${lv} != actual ${actual}`);
     }
   });
 
-export type Grade = z.infer<typeof Grade>;
+export type CleaningLevel = z.infer<typeof CleaningLevel>;
 export type ContaminationType = z.infer<typeof ContaminationType>;
 export type Facade = z.infer<typeof Facade>;
 export type Contamination = z.infer<typeof Contamination>;

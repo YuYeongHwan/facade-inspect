@@ -1,16 +1,22 @@
 import type { ReactNode } from "react";
-import { GRADE_COLORS } from "@/lib/palette";
-import type { Grade } from "@/lib/types";
+import { LEVEL_STYLES } from "@/lib/palette";
+import type { CleaningLevel } from "@/lib/types";
 
-export function GradeBadge({ grade, size = "sm" }: { grade: Grade; size?: "sm" | "lg" }) {
-  const cls = size === "lg" ? "h-9 w-9 text-lg" : "h-6 w-6 text-xs";
+/** 청소 우선순위 배지 "5 우선 청소". 5(우선 청소)만 채운 빨강 + 글로우로 가장 눈에 띄게, 나머지는 옅은 틴트. */
+export function LevelBadge({ level, size = "sm" }: { level: CleaningLevel; size?: "sm" | "lg" }) {
+  const { label, color } = LEVEL_STYLES[level];
+  const urgent = level === 5;
+  const cls = size === "lg" ? "gap-1.5 px-2.5 py-1 text-sm" : "gap-1 px-1.5 py-0.5 text-[11px]";
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-md font-bold text-neutral-950 ${cls}`}
-      style={{ backgroundColor: GRADE_COLORS[grade] }}
-      aria-label={`등급 ${grade}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-md border font-semibold ${cls} ${
+        urgent ? "text-white shadow-[0_0_10px_rgba(239,68,68,0.6)]" : ""
+      }`}
+      style={urgent ? { backgroundColor: color, borderColor: color } : { color, borderColor: `${color}66`, backgroundColor: `${color}1a` }}
+      aria-label={`청소 우선순위 ${level}단계 ${label}`}
     >
-      {grade}
+      <span className="tabular-nums">{level}</span>
+      {label}
     </span>
   );
 }

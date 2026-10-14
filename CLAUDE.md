@@ -3,9 +3,9 @@
 ## 목표
 건물 촬영 영상을 입력받아
 1) 실시간(Live): 프레임마다 창문을 검출해 박스+임시 ID 오버레이
-2) 비행 후(Post-flight): 창문별 오염 영역(먼지/얼룩/때/심한오염) 히트맵, A~D 등급,
-   건물 박스형 3D 모델 위 창문 패널을 등급 색으로 표시
-웹 대시보드에서 창문 클릭 → 확대 이미지 + 오염 영역 오버레이 + 등급 표시
+2) 비행 후(Post-flight): 창문별 오염 영역(먼지/얼룩/때/심한오염) 히트맵, 청소 우선순위 level 1~5,
+   건물 박스형 3D 모델 위 창문 패널을 level 색으로 표시
+웹 대시보드에서 창문 클릭 → 확대 이미지 + 오염 영역 오버레이 + 청소 우선순위 표시
 
 ## 핵심 설계 원칙
 - 창문/외벽 구분에 색(HSV 등) 임계값 사용 금지. 학습 기반 분할(YOLO11-seg) + 기하 후처리만 사용
@@ -51,7 +51,7 @@ server와 web(TS 타입)은 이를 따른다. 좌표 규칙:
     {"id": "F1-R03-C02", "facade_id": "F1", "row": 3, "col": 2,
      "facade_rect": [u0, v0, u1, v1],
      "corners_3d": [[x,y,z],[x,y,z],[x,y,z],[x,y,z]],
-     "grade": "B", "score": 0.054,
+     "cleaning_level": 3, "cleaning_label": "가급적 청소", "score": 0.054,
      "contamination": [
        {"type": "dust", "area_ratio": 0.021, "polygon": [[0.1,0.2],[0.15,0.2],[0.15,0.25]]}
      ],
@@ -60,14 +60,24 @@ server와 web(TS 타입)은 이를 따른다. 좌표 규칙:
                 "overlay": "windows/F1-R03-C02/overlay.png"},
      "num_views": 14}
   ],
-  "summary": {"total": 20, "grade_counts": {"A": 8, "B": 6, "C": 4, "D": 2}}
+  "summary": {"total": 20, "level_counts": {"1": 6, "2": 5, "3": 4, "4": 3, "5": 2}}
 }
 ```
 오염 유형 enum: dust(먼지), stain(얼룩), grime(때), heavy(심한 오염)
 
-## 등급 규칙 (facade_cv/contamination/grade.py)
+## 청소 우선순위 규칙 (facade_cv/contamination/grade.py)
+관리자가 라벨만 보고 청소 여부를 판단하도록 5단계. 임계값·라벨·색은 config/grading.yaml (web/lib/palette.ts와 동기, 테스트로 검사)
 score = Σ(type_ratio × weight) , weight: dust 0.5, stain 0.8, grime 1.0, heavy 1.5
-A < 0.02 ≤ B < 0.08 ≤ C < 0.20 ≤ D  (config/grading.yaml에서 조정 가능)
+
+| level | 라벨 | score | 색 |
+|---|---|---|---|
+| 1 | 청소 불필요 | < 0.02 | #22c55e |
+| 2 | 경과 관찰 | 0.02 ~ 0.05 | #84cc16 |
+| 3 | 가급적 청소 | 0.05 ~ 0.10 | #eab308 |
+| 4 | 청소 필요 | 0.10 ~ 0.20 | #f97316 |
+| 5 | 우선 청소 | ≥ 0.20 | #ef4444 |
+
+경계값은 상위 level에 포함 (score 0.05 → level 3)
 
 ## 작업 규칙
 - 각 모듈은 CLI(`python -m facade_cv.<module> ...`)와 함수 API를 둘 다 제공

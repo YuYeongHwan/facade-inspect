@@ -1,23 +1,22 @@
 import { SourceBadge, ToggleChip } from "@/components/ui";
-import { GRADE_COLORS } from "@/lib/palette";
-import { GRADES, type Grade, type InspectionResult } from "@/lib/types";
+import { LEVEL_STYLES } from "@/lib/palette";
+import { type CleaningLevel, type InspectionResult, LEVELS } from "@/lib/types";
 
 export default function SummaryBar({
   result,
   source,
-  visibleGrades,
-  onToggleGrade,
+  visibleLevels,
+  onToggleLevel,
 }: {
   result: InspectionResult;
   source?: "mock" | "run";
-  visibleGrades: Set<Grade>;
-  onToggleGrade: (g: Grade) => void;
+  visibleLevels: Set<CleaningLevel>;
+  onToggleLevel: (lv: CleaningLevel) => void;
 }) {
   const total = result.windows.length;
-  const counts = Object.fromEntries(GRADES.map((g) => [g, result.windows.filter((w) => w.grade === g).length])) as Record<
-    Grade,
-    number
-  >;
+  const counts = Object.fromEntries(
+    LEVELS.map((lv) => [lv, result.windows.filter((w) => w.cleaning_level === lv).length]),
+  ) as Record<CleaningLevel, number>;
   const avg = total ? result.windows.reduce((s, w) => s + w.score, 0) / total : 0;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-neutral-800 px-4 py-3">
@@ -30,18 +29,22 @@ export default function SummaryBar({
       </div>
       <Stat label="전체 창문" value={total.toString()} />
       <Stat label="평균 점수" value={avg.toFixed(3)} />
+      <div className={`rounded-lg border px-3 py-1 ${counts[5] ? "border-red-500 bg-red-500/15" : "border-neutral-800"}`}>
+        <div className={`text-xs ${counts[5] ? "font-semibold text-red-300" : "text-neutral-500"}`}>우선 청소</div>
+        <div className={`text-lg font-bold tabular-nums ${counts[5] ? "text-red-400" : ""}`}>{counts[5]}개</div>
+      </div>
       <div className="min-w-56 flex-1">
-        <div className="mb-1 text-xs text-neutral-500">등급 분포</div>
-        <div className="flex h-3 overflow-hidden rounded-full bg-neutral-800" role="img" aria-label="등급 분포">
-          {GRADES.map((g) =>
-            counts[g] ? (
+        <div className="mb-1 text-xs text-neutral-500">청소 우선순위 분포</div>
+        <div className="flex h-3 overflow-hidden rounded-full bg-neutral-800" role="img" aria-label="청소 우선순위 분포">
+          {LEVELS.map((lv) =>
+            counts[lv] ? (
               <div
-                key={g}
-                title={`${g}: ${counts[g]}`}
+                key={lv}
+                title={`${lv} ${LEVEL_STYLES[lv].label}: ${counts[lv]}`}
                 style={{
-                  width: `${(counts[g] / total) * 100}%`,
-                  backgroundColor: GRADE_COLORS[g],
-                  opacity: visibleGrades.has(g) ? 1 : 0.2,
+                  width: `${(counts[lv] / total) * 100}%`,
+                  backgroundColor: LEVEL_STYLES[lv].color,
+                  opacity: visibleLevels.has(lv) ? 1 : 0.2,
                 }}
               />
             ) : null,
@@ -49,9 +52,9 @@ export default function SummaryBar({
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {GRADES.map((g) => (
-          <ToggleChip key={g} on={visibleGrades.has(g)} onClick={() => onToggleGrade(g)} color={GRADE_COLORS[g]}>
-            {g} <span className="tabular-nums text-neutral-400">{counts[g]}</span>
+        {LEVELS.map((lv) => (
+          <ToggleChip key={lv} on={visibleLevels.has(lv)} onClick={() => onToggleLevel(lv)} color={LEVEL_STYLES[lv].color}>
+            {lv} {LEVEL_STYLES[lv].label} <span className="tabular-nums text-neutral-400">{counts[lv]}</span>
           </ToggleChip>
         ))}
       </div>

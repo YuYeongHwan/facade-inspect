@@ -4,8 +4,12 @@ weights:
   stain: 0.8
   grime: 1.0
   heavy: 1.5
-# 각 등급의 score 하한 (A는 0). A < 0.02 ≤ B < 0.08 ≤ C < 0.20 ≤ D
-thresholds:
-  B: 0.02
-  C: 0.08
-  D: 0.20
+# 청소 우선순위 5단계. min_score = 그 level의 score 하한 (level 1은 0, 오름차순).
+# score < 0.02 → 1 ≤ ... 0.05 → 3, 0.10 → 4, 0.20 ≤ → 5
+# 라벨·색은 web/lib/palette.ts LEVELS와 같아야 한다 (cv/tests/test_schema.py가 검사)
+levels:
+  - {level: 1, label: 청소 불필요, min_score: 0.0, color: "#22c55e"}
+  - {level: 2, label: 경과 관찰, min_score: 0.02, color: "#84cc16"}
+  - {level: 3, label: 가급적 청소, min_score: 0.05, color: "#eab308"}
+  - {level: 4, label: 청소 필요, min_score: 0.10, color: "#f97316"}
+  - {level: 5, label: 우선 청소, min_score: 0.20, color: "#ef4444"}

@@ -17,7 +17,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-Grade = Literal["A", "B", "C", "D"]
+# 청소 우선순위 level 1(청소 불필요)~5(우선 청소). 임계값·라벨은 config/grading.yaml
+CleaningLevel = Annotated[int, Field(ge=1, le=5)]
+LevelKey = Literal["1", "2", "3", "4", "5"]
 ContaminationType = Literal["dust", "stain", "grime", "heavy"]
 Ratio = Annotated[float, Field(ge=0.0, le=1.0)]
 Vec3 = tuple[float, float, float]
@@ -80,7 +82,8 @@ class Window(_Model):
     col: int = Field(ge=1)
     facade_rect: tuple[float, float, float, float]
     corners_3d: tuple[Vec3, Vec3, Vec3, Vec3]
-    grade: Grade
+    cleaning_level: CleaningLevel
+    cleaning_label: str = Field(min_length=1)
     score: float = Field(ge=0)
     contamination: list[Contamination]
     type_ratios: TypeRatios
@@ -100,7 +103,7 @@ class Window(_Model):
 
 class Summary(_Model):
     total: int = Field(ge=0)
-    grade_counts: dict[Grade, int]
+    level_counts: dict[LevelKey, int]
 
 
 class InspectionResult(_Model):
@@ -123,9 +126,9 @@ class InspectionResult(_Model):
                 raise ValueError(f"window {w.id}: unknown facade_id {w.facade_id}")
         if self.summary.total != len(self.windows):
             raise ValueError(f"summary.total {self.summary.total} != {len(self.windows)} windows")
-        counts = {g: sum(w.grade == g for w in self.windows) for g in "ABCD"}
-        if {g: self.summary.grade_counts.get(g, 0) for g in "ABCD"} != counts:
-            raise ValueError(f"summary.grade_counts != actual {counts}")
+        counts = {str(lv): sum(w.cleaning_level == lv for w in self.windows) for lv in range(1, 6)}
+        if {k: self.summary.level_counts.get(k, 0) for k in counts} != counts:
+            raise ValueError(f"summary.level_counts != actual {counts}")
         return self
 
 
@@ -136,4 +139,4 @@ def load_result(path: str | Path) -> InspectionResult:
 if __name__ == "__main__":
     # python -m facade_cv.schema runs/<id>/result.json
     r = load_result(sys.argv[1])
-    print(f"OK {r.inspection_id}: {r.summary.total} windows, {r.summary.grade_counts}")
+    print(f"OK {r.inspection_id}: {r.summary.total} windows, {r.summary.level_counts}")

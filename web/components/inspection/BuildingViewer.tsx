@@ -5,8 +5,8 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { type ComponentRef, type RefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { inspectionAssetUrl } from "@/lib/api";
-import { GRADE_COLORS } from "@/lib/palette";
-import type { Facade, Grade, InspectionResult, Window } from "@/lib/types";
+import { LEVEL_STYLES } from "@/lib/palette";
+import { type CleaningLevel, type Facade, type InspectionResult, LEVELS, type Window } from "@/lib/types";
 
 type Controls = ComponentRef<typeof OrbitControls>;
 type View = { position: THREE.Vector3; target: THREE.Vector3 };
@@ -91,7 +91,8 @@ function WindowPanel({
   onSelect: (id: string) => void;
 }) {
   const geom = useMemo(() => quadGeometry(panel.corners), [panel]);
-  const color = GRADE_COLORS[panel.window.grade];
+  const color = LEVEL_STYLES[panel.window.cleaning_level].color;
+  const urgent = panel.window.cleaning_level === 5; // 우선 청소는 평소에도 진하고 굵게
   const id = panel.window.id;
   return (
     <group>
@@ -110,7 +111,7 @@ function WindowPanel({
         <meshBasicMaterial
           color={color}
           transparent
-          opacity={active ? 0.9 : 0.55}
+          opacity={active || urgent ? 0.9 : 0.55}
           side={THREE.DoubleSide}
           depthWrite={false}
           toneMapped={false}
@@ -119,7 +120,7 @@ function WindowPanel({
       <Line
         points={[...panel.corners, panel.corners[0]]}
         color={active ? "#ffffff" : color}
-        lineWidth={active ? 3 : 1}
+        lineWidth={active ? 3 : urgent ? 2.5 : 1}
       />
     </group>
   );
@@ -155,7 +156,7 @@ function CameraRig({ goal, controls }: { goal: View | null; controls: RefObject<
 export default function BuildingViewer({
   inspectionId,
   result,
-  visibleGrades,
+  visibleLevels,
   selectedId,
   hoveredId,
   onHover,
@@ -163,7 +164,7 @@ export default function BuildingViewer({
 }: {
   inspectionId: string;
   result: InspectionResult;
-  visibleGrades: Set<Grade>;
+  visibleLevels: Set<CleaningLevel>;
   selectedId: string | null;
   hoveredId: string | null;
   onHover: (id: string | null) => void;
@@ -208,7 +209,7 @@ export default function BuildingViewer({
           <FacadeTexture key={f.id} facade={f} url={inspectionAssetUrl(inspectionId, f.texture)} lift={size * 0.0005} />
         ))}
         {panels
-          .filter((p) => visibleGrades.has(p.window.grade))
+          .filter((p) => visibleLevels.has(p.window.cleaning_level))
           .map((p) => (
             <WindowPanel
               key={p.window.id}
@@ -218,12 +219,12 @@ export default function BuildingViewer({
               onSelect={onSelect}
             />
           ))}
-        {hovered && visibleGrades.has(hovered.window.grade) && (
+        {hovered && visibleLevels.has(hovered.window.cleaning_level) && (
           <Html position={hovered.center} center style={{ pointerEvents: "none" }} zIndexRange={[20, 0]}>
             <div className="-translate-y-8 whitespace-nowrap rounded-md border border-neutral-700 bg-neutral-900/95 px-2 py-1 text-xs text-neutral-100 shadow-lg">
               <span className="font-mono">{hovered.window.id}</span>
-              <span className="ml-2 font-bold" style={{ color: GRADE_COLORS[hovered.window.grade] }}>
-                {hovered.window.grade}
+              <span className="ml-2 font-bold" style={{ color: LEVEL_STYLES[hovered.window.cleaning_level].color }}>
+                {hovered.window.cleaning_level} {hovered.window.cleaning_label}
               </span>
             </div>
           </Html>
@@ -242,6 +243,28 @@ export default function BuildingViewer({
       >
         전체 보기
       </button>
+      <Legend />
     </div>
+  );
+}
+
+/** 패널 색 범례: level · 라벨 · score 구간 (높은 level이 위). */
+function Legend() {
+  return (
+    <ul className="pointer-events-none absolute bottom-3 left-3 hidden space-y-1 rounded-md border border-neutral-800 bg-neutral-900/85 px-2.5 py-2 text-xs sm:block">
+      {LEVELS.toReversed().map((lv) => {
+        const { label, min, color } = LEVEL_STYLES[lv];
+        const max = LEVEL_STYLES[(lv + 1) as CleaningLevel]?.min;
+        return (
+          <li key={lv} className={`flex items-center gap-2 ${lv === 5 ? "font-bold text-red-300" : "text-neutral-300"}`}>
+            <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: color }} />
+            <span className="w-20">
+              {lv} {label}
+            </span>
+            <span className="tabular-nums text-neutral-500">{max === undefined ? `≥ ${min}` : `${min}–${max}`}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

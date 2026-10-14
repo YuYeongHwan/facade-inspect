@@ -10,12 +10,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 import trimesh
-import yaml
-
+from facade_cv.config import load_config
+from facade_cv.contamination.grade import cleaning_level, compute_score
 from facade_cv.schema import InspectionResult
 
 ROOT = Path(__file__).resolve().parent
-GRADING = yaml.safe_load((ROOT.parent / "config/grading.yaml").read_text())
+GRADING = load_config("grading")
 
 W, H, D = 12.0, 24.0, 8.0  # 박스 건물 x, y(높이), z
 WIN_W, WIN_H = 2.0, 2.5
@@ -24,8 +24,9 @@ CROP_W, CROP_H = 256, 320
 TEX_PX_PER_M = 20
 TYPES = ["dust", "stain", "grime", "heavy"]
 COLORS = {"dust": (80, 200, 230), "stain": (40, 130, 240), "grime": (40, 70, 110), "heavy": (30, 30, 200)}  # BGR
-# 목표 score (등급 구간 중앙 부근). 실제 등급은 래스터 면적으로 다시 계산
-TARGET = {"A": 0.008, "B": 0.05, "C": 0.13, "D": 0.32}
+# level별 목표 score (구간 중앙 부근). 실제 level은 래스터 면적으로 다시 계산
+TARGET = {1: 0.008, 2: 0.035, 3: 0.075, 4: 0.15, 5: 0.32}
+LEVEL_MIX = {1: 6, 2: 5, 3: 4, 4: 3, 5: 2}  # 창문 20개
 
 # (id, origin, u_axis, width, cols) — v_axis는 모두 +Y, normal = u × v
 FACADES = [
@@ -34,11 +35,6 @@ FACADES = [
     ("F3", (W, 0, 0), (-1, 0, 0), W, 3),
     ("F4", (0, 0, 0), (0, 0, 1), D, 2),
 ]
-
-
-def grade_of(score: float) -> str:
-    t = GRADING["thresholds"]
-    return "D" if score >= t["D"] else "C" if score >= t["C"] else "B" if score >= t["B"] else "A"
 
 
 def ellipse_poly(rng: random.Random, area: float) -> np.ndarray:
@@ -57,9 +53,9 @@ def to_px(poly: np.ndarray) -> np.ndarray:
     return np.round(poly * [CROP_W - 1, CROP_H - 1]).astype(np.int32)
 
 
-def make_window(rng: random.Random, target: str, out: Path) -> dict:
+def make_window(rng: random.Random, target: int, out: Path) -> dict:
     regions = []
-    if target != "A" or rng.random() < 0.5:
+    if target != 1 or rng.random() < 0.5:
         types = rng.sample(TYPES, rng.randint(1, 3))
         for typ in types:
             share = TARGET[target] / len(types)
@@ -75,7 +71,8 @@ def make_window(rng: random.Random, target: str, out: Path) -> dict:
             {"type": typ, "area_ratio": round(float(m.mean()), 4), "polygon": np.round(poly, 4).tolist()}
         )
     type_ratios = {t: round(float(masks[t].mean()), 4) for t in TYPES}
-    score = round(sum(type_ratios[t] * GRADING["weights"][t] for t in TYPES), 4)
+    score = round(compute_score(type_ratios, GRADING), 4)
+    level, label = cleaning_level(score, GRADING)
 
     # crop: 유리(밝은 청회색) + 프레임 + 오염 얼룩
     crop = np.full((CROP_H, CROP_W, 3), (200, 185, 160), np.uint8)
@@ -105,7 +102,8 @@ def make_window(rng: random.Random, target: str, out: Path) -> dict:
     cv2.imwrite(str(out / "heatmap.png"), heat)
     cv2.imwrite(str(out / "overlay.png"), overlay)
     return {
-        "grade": grade_of(score),
+        "cleaning_level": level,
+        "cleaning_label": label,
         "score": score,
         "contamination": contamination,
         "type_ratios": type_ratios,
@@ -114,7 +112,7 @@ def make_window(rng: random.Random, target: str, out: Path) -> dict:
 
 def main() -> None:
     rng = random.Random(42)
-    targets = list("A" * 8 + "B" * 6 + "C" * 4 + "D" * 2)
+    targets = [lv for lv, n in LEVEL_MIX.items() for _ in range(n)]
     rng.shuffle(targets)
 
     facades, windows = [], []
@@ -157,10 +155,10 @@ def main() -> None:
         "building": {"mesh": "building.glb", "facades": facades},
         "windows": windows,
         "summary": {"total": len(windows),
-                    "grade_counts": {g: sum(w["grade"] == g for w in windows) for g in "ABCD"}},
+                    "level_counts": {str(lv): sum(w["cleaning_level"] == lv for w in windows) for lv in range(1, 6)}},
     })
     (ROOT / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
-    print(f"wrote {ROOT / 'result.json'}: {result.summary.grade_counts}")
+    print(f"wrote {ROOT / 'result.json'}: {result.summary.level_counts}")
 
 
 if __name__ == "__main__":

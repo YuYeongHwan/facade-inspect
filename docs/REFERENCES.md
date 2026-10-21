@@ -4,9 +4,10 @@
 새 자료는 번호를 이어서 붙이고, 기존 번호는 바꾸지 않는다 (삭제 시에도 번호는 비워 둔다).
 서지 정보를 원문에서 확인하지 못한 항목은 **[확인 필요]**로 표시한다.
 
-> **청소 우선순위 수치에 대한 주의**: `config/grading.yaml`의 가중치(0.5/0.8/1.0/1.5)와 level 경계(0.02/0.05/0.10/0.20)는
-> 아래 문헌의 **구조**(면적 × 심각도 가중 합, 지수 → 등급 구간)를 빌린 **자체 설정값**이다. 문헌에서 가져온 수치가 아니며
-> 실측 데이터로 검증되지 않았다.
+> **청소 우선순위 수치에 대한 주의**: CSI(창문 오염 심각도 지수, [docs/scoring.md](scoring.md))의 `config/grading.yaml`
+> 종류 가중치 k_t(0.5/0.8/1.0/1.5), 심각도 ΔE 경계(6/15), level 경계(0.009/0.022/0.044/0.089), 창틀 마진(0.06)은
+> 아래 문헌의 **구조**(면적 × 상태 등급 × 유형 가중치 / 최댓값, 지수 → 등급 구간)를 빌린 **보정 전 초기값**이다.
+> 문헌에서 가져온 수치가 아니며 실측으로 검증되지 않았다 — 사람 평가로 보정한다 (`contamination/calibrate.py`).
 
 ## 데이터셋
 
@@ -65,8 +66,9 @@ Roboflow Universe(https://universe.roboflow.com)에 사용자가 올린 데이�
   — A_n 결함 n의 면적, k_n 결함 상태 등급(0~4), k_a,n 결함 유형별 상대 가중치, A 전체 면적, k 최고 등급(4).
   [R2-a]는 같은 구조의 Overall Degradation Level(ODL, 결함 면적의 가중 합)로 수명을 추정한다
 - **[확인 필요]** 두 편 중 어느 논문이 심각도 지수 식을 처음 정의했는지, k_a,n 원 값. 원문은 도서관에서 확인 예정
-- 사용 부분: `score = Σ(type_ratio × weight)`의 구조 — 오염 유형별 **면적 비율 × 유형 가중치**의 합
-  (`cv/facade_cv/contamination/grade.py` `compute_score`, `config/grading.yaml` weights). 유형 가중치 수치는 이 논문 값이 아니다
+- 사용 부분: CSI 식의 구조 그대로 — A_n → 오염 영역 면적 A_j, k_n(상태 등급) → 심각도 k_s(1~3), k_a,n → 종류 가중치 k_t,
+  분모 A·k → 유리 면적 A_g × k_s_max × k_t_max (0~1 정규화). (`cv/facade_cv/contamination/grade.py` `compute_csi`,
+  `config/grading.yaml`, docs/scoring.md). 등급 수(3)·가중치 수치는 이 논문 값이 아니다
 
 ### [R3] (비움 — [R2-a]로 통합)
 
@@ -77,7 +79,7 @@ Roboflow Universe(https://universe.roboflow.com)에 사용자가 올린 데이�
 - 발행: ASTM International, Book of Standards Vol. 04.03
 - 링크: https://store.astm.org/d6433-24.html
 - 사용 부분: 육안 조사 결함(유형·심각도·면적)을 하나의 지수로 합친 뒤 **구간별 등급(라벨)으로 나눠 관리자가 보수 우선순위를
-  정하게 하는** 방식. 청소 우선순위 5단계 구간 설계에 참고 (`config/grading.yaml` levels). PCI의 deduct 곡선·수치는 쓰지 않음
+  정하게 하는** 방식. CSI → 청소 우선순위 5단계 구간 (`config/grading.yaml` levels min_csi). PCI의 deduct 곡선·수치는 쓰지 않음
 
 ### [R5] Smestad et al. — 오염(soiling)에 의한 투과율 손실
 - 저자: Greg P. Smestad, Thomas A. Germer, Hameed Alrashidi, Eduardo F. Fernández 외 (총 18명), Leonardo Micheli
@@ -85,8 +87,9 @@ Roboflow Universe(https://universe.roboflow.com)에 사용자가 올린 데이�
 - 제목: Modelling photovoltaic soiling losses through optical characterization
 - 저널: Scientific Reports, 10, Article 58
 - 링크: https://doi.org/10.1038/s41598-019-56868-z
-- 사용 부분: 유리 표면 오염의 투과율 손실이 오염 면적(입자 피복률)에 따라 커진다는 근거 → 오염 정도의 기본 척도로
-  **면적 비율(area_ratio)**을 사용 (`schema.py` contamination.area_ratio, `grade.py`)
+- 사용 부분: 유리 표면 오염의 투과율 손실이 오염 면적(입자 피복률)에 따라 커지고, 같은 피복률이라도 오염층의 광학적 성질에
+  따라 손실이 달라진다는 근거 → CSI의 면적 항 **A_j/A_g**와 심각도 **k_s**(영역의 불투명도를 깨끗한 유리 대비 색차로 근사)
+  (`grade.py` `grade_window`, `config/grading.yaml` severity). ΔE를 불투명도 대리로 쓰는 것과 경계값은 자체 설정
 
 ### [R6] Willers et al. — 먼지 종류별 유리 투과율 영향
 - 저자: G. Willers, N. Sakarapunthip, K. Ilse, S. Chuangchote, R. Gottschalg
@@ -94,8 +97,8 @@ Roboflow Universe(https://universe.roboflow.com)에 사용자가 올린 데이�
 - 제목: Impact of Different Types of Dust on Solar Glass Transmittance and PV Module Performance
 - 저널: Progress in Photovoltaics: Research and Applications, 33(8), 844–853
 - 링크: https://doi.org/10.1002/pip.3930
-- 사용 부분: 같은 피복률이라도 오염 종류에 따라 투과율 손실 기울기가 다르다는 결과 → 오염 **유형별 가중치**를 두는 근거
-  (`config/grading.yaml` weights). 가중치 수치는 이 논문 값이 아니다
+- 사용 부분: 같은 피복률이라도 오염 종류에 따라 투과율 손실 기울기가 다르다는 결과 → CSI의 종류 가중치 **k_t**를 두는 근거
+  (`config/grading.yaml` weights). 가중치 수치는 이 논문 값이 아니다 — 사람 평가로 보정 (`calibrate.py`)
 
 ### [R7] Lee et al. — 유리창 청소 장치용 영상 기반 먼지 검출
 - 저자: Jiseok Lee, Hobyeong Chae, KyungMin Kim, Hwa Soo Kim, TaeWon Seo
@@ -197,3 +200,36 @@ Roboflow Universe(https://universe.roboflow.com)에 사용자가 올린 데이�
 - 사용 부분: 자동 비행 설계 (`flight/`, `docs/hardware/`)에서 FC 하드웨어 참고
   - [R18-a] https://www.radiolink.com/crossrace — APM(ArduPilot) 기반, TELEM 포트 구성 (TELEM2 텔레메트리, TELEM3 GPS 등)
   - [R18-b] https://www.radiolink.com/crossrace_manual — Mavlink UART 2개 (TELEM1·2 사용자 지정 시리얼), Guided 모드 (3.7.8절)
+
+## 색차·평가 일치도 (CSI 심각도·보정)
+
+### [R22] CIE 15:2004 — Colorimetry (CIELAB, ΔE*ab)
+- 저자: Commission Internationale de l'Éclairage (CIE)
+- 연도: 2004 (3rd ed.)
+- 제목: CIE 15:2004 Colorimetry
+- 발행: CIE Central Bureau, Vienna. ISBN 978-3-901906-33-6 **[확인 필요: ISBN]**
+- 사용 부분: CIELAB 색공간과 CIE 1976 색차 ΔE*ab = √(ΔL*² + Δa*² + Δb*²) — 오염 영역 평균색과 깨끗한 유리 평균색의 차
+  (`grade.py` `lab`, `delta_e`). 변환은 OpenCV `cvtColor(BGR2LAB)` (D65, sRGB 가정)
+
+### [R23] Mahy, Van Eycken, Oosterlinck — 지각 가능 최소 색차
+- 저자: Marc Mahy, Luc Van Eycken, André Oosterlinck
+- 연도: 1994
+- 제목: Evaluation of Uniform Color Spaces Developed after the Adoption of CIELAB and CIELUV
+- 저널: Color Research & Application, 19(2), 105–121 **[확인 필요: 페이지]**
+- 사용 부분: CIELAB에서 사람이 겨우 구분하는 색차(JND) ≈ 2.3 — 심각도 경계 ΔE 6(≈ 2.5 JND)을 정한 기준점
+  (`config/grading.yaml` severity.delta_e). 6·15라는 값 자체는 자체 초기값
+
+### [R24] Cohen — 가중 카파 (weighted kappa)
+- 저자: Jacob Cohen
+- 연도: 1968
+- 제목: Weighted kappa: Nominal scale agreement with provision for scaled disagreement or partial credit
+- 저널: Psychological Bulletin, 70(4), 213–220. https://doi.org/10.1037/h0026256
+- 사용 부분: 순서 등급(1~5) 일치도 — 이차 가중치 w_ij = (i−j)²/(n−1)² (quadratic weighted kappa).
+  평가자 간 일치도, CSI level ↔ 사람 합의 등급 일치도, 보정 목적함수 (`contamination/calibrate.py` `qwk`)
+
+### [R25] Landis & Koch — 카파 해석 기준
+- 저자: J. Richard Landis, Gary G. Koch
+- 연도: 1977
+- 제목: The Measurement of Observer Agreement for Categorical Data
+- 저널: Biometrics, 33(1), 159–174. https://doi.org/10.2307/2529310
+- 사용 부분: 카파 해석 구간 (0.41–0.60 moderate, 0.61–0.80 substantial, 0.81– almost perfect) — 보정 결과 판독 (docs/scoring.md)

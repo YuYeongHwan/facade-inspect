@@ -17,8 +17,8 @@ export default function SummaryBar({
   const counts = Object.fromEntries(
     LEVEL_FILTERS.map((lv) => [lv, result.windows.filter((w) => levelOf(w) === lv).length]),
   ) as Record<LevelFilter, number>;
-  const scores = result.windows.flatMap((w) => (w.score === null ? [] : [w.score]));
-  const avg = scores.length ? scores.reduce((s, x) => s + x, 0) / scores.length : null;
+  const csis = result.windows.flatMap((w) => (w.csi === null ? [] : [w.csi]));
+  const avg = csis.length ? csis.reduce((s, x) => s + x, 0) / csis.length : null;
   // 미분석은 있을 때만 막대·칩에 보인다
   const shown = LEVEL_FILTERS.filter((lv) => lv !== "unanalyzed" || counts[lv]);
   return (
@@ -31,7 +31,7 @@ export default function SummaryBar({
         </div>
       </div>
       <Stat label="전체 창문" value={total.toString()} />
-      <Stat label="평균 점수" value={avg === null ? "—" : avg.toFixed(3)} />
+      <Stat label="평균 CSI" value={avg === null ? "—" : avg.toFixed(3)} />
       <div className={`rounded-lg border px-3 py-1 ${counts[5] ? "border-red-500 bg-red-500/15" : "border-neutral-800"}`}>
         <div className={`text-xs ${counts[5] ? "font-semibold text-red-300" : "text-neutral-500"}`}>우선 청소</div>
         <div className={`text-lg font-bold tabular-nums ${counts[5] ? "text-red-400" : ""}`}>{counts[5]}개</div>

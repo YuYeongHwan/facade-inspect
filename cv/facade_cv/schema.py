@@ -7,7 +7,10 @@
 - facade_rect: 외벽 로컬 좌표 [u0, v0, u1, v1] (origin 기준, u_axis/v_axis 방향, 3D와 같은 단위)
 - row/col: 1부터. row는 v(위) 방향, col은 u 방향으로 증가
 - 경로(mesh, texture, images.*)는 result.json이 있는 디렉토리 기준 상대경로
-- 오염 분석 전(미분석) 창문: cleaning_level/score/type_ratios/images.heatmap·overlay = null, cleaning_label = "미분석"
+- 오염 분석 전(미분석) 창문: cleaning_level/csi/type_ratios/glass_ratio/occluded_ratio/images.heatmap·overlay = null,
+  cleaning_label = "미분석"
+- CSI (창문 오염 심각도 지수, 0~1) = Σ area_ratio × severity × k_t / (k_s_max × k_t_max) — docs/scoring.md.
+  area_ratio·type_ratios는 유리 면적 A_g(창틀 마진·가림 제외) 대비. 계산에 쓴 k_t 등은 meta.csi_params
 """
 
 import re
@@ -18,12 +21,14 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# 청소 우선순위 level 1(청소 불필요)~5(우선 청소). 임계값·라벨은 config/grading.yaml
+# 청소 우선순위 level 1(청소 불필요)~5(우선 청소). CSI 경계·라벨은 config/grading.yaml
 CleaningLevel = Annotated[int, Field(ge=1, le=5)]
 LevelKey = Literal["1", "2", "3", "4", "5", "unanalyzed"]
 UNANALYZED_LABEL = "미분석"
 ContaminationType = Literal["dust", "stain", "grime", "heavy"]
 Ratio = Annotated[float, Field(ge=0.0, le=1.0)]
+Severity = Annotated[int, Field(ge=1, le=3)]
+CSI_TOL = 1e-3  # csi와 Σ 영역 기여도(meta.csi_params로 다시 계산)의 허용 차 (반올림)
 Vec3 = tuple[float, float, float]
 UV = tuple[Ratio, Ratio]
 
@@ -43,6 +48,17 @@ class ReconStatus(_Model):
     warnings: list[str]
 
 
+class CsiParams(_Model):
+    """CSI 계산에 쓴 값 (config/grading.yaml 스냅샷). 웹이 계산 내역을 보여 주고, 보정 후에도 옛 결과를 해석할 수 있게."""
+
+    weights: dict[ContaminationType, float]  # k_t
+    severity_max: int = Field(ge=1)  # k_s_max
+    severity_delta_e: list[float]  # k_s 2, 3의 ΔE*ab 하한
+    frame_margin: Ratio
+    level_min_csi: list[float] = Field(min_length=5, max_length=5)  # level 1~5 CSI 하한
+    status: str  # "보정 전 초기값" 또는 보정 기록
+
+
 class Meta(_Model):
     video: str
     fps: float = Field(gt=0)
@@ -50,6 +66,7 @@ class Meta(_Model):
     scale_known: bool
     created_at: datetime
     recon_status: ReconStatus | None = None
+    csi_params: CsiParams | None = None  # 오염 분석 결과가 있으면 필수
 
 
 class Facade(_Model):
@@ -70,7 +87,9 @@ class Building(_Model):
 
 class Contamination(_Model):
     type: ContaminationType
-    area_ratio: Ratio
+    area_ratio: Ratio  # A_j / A_g (유리 안 면적만)
+    severity: Severity  # k_s
+    delta_e: float | None = Field(ge=0)  # 깨끗한 유리 대비 ΔE*ab (기준 유리가 부족하면 null → severity = max)
     polygon: list[UV] = Field(min_length=3)
 
 
@@ -96,7 +115,9 @@ class Window(_Model):
     corners_3d: tuple[Vec3, Vec3, Vec3, Vec3]
     cleaning_level: CleaningLevel | None  # null = 미분석
     cleaning_label: str = Field(min_length=1)
-    score: float | None = Field(ge=0)
+    csi: Ratio | None
+    glass_ratio: Ratio | None  # A_g / crop 면적
+    occluded_ratio: Ratio | None  # 창틀 안쪽에서 나무·전선·기둥에 가린 면적 / crop 면적
     contamination: list[Contamination]
     type_ratios: TypeRatios | None
     images: WindowImages
@@ -110,12 +131,24 @@ class Window(_Model):
         u0, v0, u1, v1 = self.facade_rect
         if not (u0 < u1 and v0 < v1):
             raise ValueError(f"facade_rect must satisfy u0<u1, v0<v1: {self.facade_rect}")
+        analysis = (self.csi, self.type_ratios, self.glass_ratio, self.occluded_ratio)
         if self.cleaning_level is None:
-            if self.cleaning_label != UNANALYZED_LABEL or self.score is not None or self.type_ratios is not None:
-                raise ValueError(f"window {self.id}: unanalyzed needs label {UNANALYZED_LABEL!r}, score/type_ratios null")
-        elif self.score is None or self.type_ratios is None:
-            raise ValueError(f"window {self.id}: analyzed window needs score and type_ratios")
+            if self.cleaning_label != UNANALYZED_LABEL or any(v is not None for v in analysis):
+                raise ValueError(f"window {self.id}: unanalyzed needs label {UNANALYZED_LABEL!r}, "
+                                 "csi/type_ratios/glass_ratio/occluded_ratio null")
+        elif any(v is None for v in analysis):
+            raise ValueError(f"window {self.id}: analyzed window needs csi, type_ratios, glass_ratio, occluded_ratio")
         return self
+
+
+def csi_of(w: Window, p: CsiParams) -> float:
+    """영역 표에서 CSI를 다시 계산 (docs/scoring.md 식)."""
+    return sum(c.area_ratio * c.severity * p.weights[c.type] for c in w.contamination) / (
+        p.severity_max * max(p.weights.values()))
+
+
+def level_of(csi: float, p: CsiParams) -> int:
+    return max(i + 1 for i, m in enumerate(p.level_min_csi) if csi >= m)
 
 
 class Summary(_Model):
@@ -141,6 +174,15 @@ class InspectionResult(_Model):
         for w in self.windows:
             if w.facade_id not in facade_ids:
                 raise ValueError(f"window {w.id}: unknown facade_id {w.facade_id}")
+        analyzed = [w for w in self.windows if w.csi is not None]
+        p = self.meta.csi_params
+        if analyzed and p is None:
+            raise ValueError("meta.csi_params required when windows are analyzed")
+        for w in analyzed:
+            if abs(csi_of(w, p) - w.csi) > CSI_TOL:
+                raise ValueError(f"window {w.id}: csi {w.csi} != Σ contamination terms {csi_of(w, p):.5f}")
+            if level_of(w.csi, p) != w.cleaning_level:
+                raise ValueError(f"window {w.id}: cleaning_level {w.cleaning_level} != level of csi {w.csi}")
         if self.summary.total != len(self.windows):
             raise ValueError(f"summary.total {self.summary.total} != {len(self.windows)} windows")
         counts = {str(lv): sum(w.cleaning_level == lv for w in self.windows) for lv in range(1, 6)}

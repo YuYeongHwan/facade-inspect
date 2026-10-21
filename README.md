@@ -25,7 +25,8 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
       datasets/     분할 데이터셋 도구 (cmp/ade20k/ttpla/roboflow_convert, label_studio/, merge_datasets)
     eval/compare.py 자체 시험셋 모델 비교 (v1 vs v2: mAP, 장애물 위 오검출, 예시 그리드)
     rectify/homography.py  소실점 두 개로 외벽 정면화 호모그래피 (detect 후처리·T6 공용)
-    contamination/grade.py  score → 청소 우선순위 level 1~5 (config/grading.yaml)
+    contamination/grade.py  오염 심각도 지수 CSI(0~1) → 청소 우선순위 level 1~5 (config/grading.yaml, docs/scoring.md)
+    contamination/calibrate.py  사람 평가(1~5) 수집 → 가중 카파 일치도 → CSI 기준값·k_t 보정
     live/run.py     실시간 창문 검출 (소스 → segmenter + postprocess, 프레임 단위) → 오버레이 + JSON 라인
     recon3d/        3D 복원: sfm(pycolmap) → up_axis(Y-up) → planes(RANSAC 외벽) → mesh(판/L자/박스) →
                     ortho(정사영 텍스처) → windows3d(창문 ID) → export(glb·result.json). degrade(가상 평면 1개)
@@ -61,7 +62,7 @@ uv run --project cv python -m facade_cv.io.captures --videos data/raw/videos    
 uv run --project cv python -m facade_cv.detect.predict --images runs/<id>/frames   # 가중치 기본: config/detect.yaml weights
 uv run --project cv python -m facade_cv.detect.run --frames runs/<id>/frames --debug  # 또는 --image X.jpg
 uv run --project cv python -m facade_cv.rectify.homography --image X.jpg           # 이미지 전체 정면화
-uv run --project cv python -m facade_cv.contamination.grade 0.07                  # score → "3 가급적 청소"
+uv run --project cv python -m facade_cv.contamination.grade 0.03                  # CSI → "3 가급적 청소"
 uv run --project cv python -m facade_cv.recon3d.run --frames runs/<id>/frames --detections runs/<id>/detect --out runs/<id> --debug
 uv run --project cv python -m facade_cv.io.source --probe                         # 웹캠 장치 번호 (아이폰 연속성 카메라 포함)
 uv run --project cv python -m facade_cv.live.run --source webcam:0 --debug        # 실시간 검출 (아래 "실시간")
@@ -288,9 +289,29 @@ uv run --project cv python -m facade_cv.eval.compare --data data/yolo/merged/dat
   (`config/eval.yaml`). raw(모델 출력)와 post(후처리 후)를 장애물 클래스별로
 - 출력 `runs/eval/<날짜_시각>/metrics.json, table.md, grid.jpg`(모델별 예측을 나란히, 오검출 차이 큰 이미지 순). 표는 `cv/weights/MODEL_CARD.md`에도 append
 
+## 오염 심각도 지수 CSI · 청소 우선순위 (facade_cv.contamination)
+
+CSI = Σ_j (A_j × k_s(j) × k_t(j)) / (A_g × k_s_max × k_t_max), 0~1. 식·기호·근거·손 계산 예시·한계는 [docs/scoring.md](docs/scoring.md).
+
+- A_g 유리 면적 = 창문 crop − 창틀 마진 − 가림(G5 occlusion), A_j 오염 영역 중 유리 안 면적
+- k_s 심각도 1~3 = 깨끗한 유리 대비 CIELAB ΔE*ab (< 6, 6~15, ≥ 15), k_t 종류 가중치 (dust 0.5, stain 0.8, grime 1.0, heavy 1.5)
+- level 경계 CSI 0.009 / 0.022 / 0.044 / 0.089 (경계값은 상위 level)
+- **수치는 모두 보정 전 초기값** (`config/grading.yaml` status). result.json `meta.csi_params`에 계산에 쓴 값을 함께 저장하고,
+  pydantic·zod가 창문마다 csi = Σ 영역 항, level = csi 구간인지 검사한다
+- 웹 상세 패널: 영역별 종류(k_t)·A_j/A_g·심각도(ΔE)·기여, 유리 면적·창틀 마진·가림 비율, 합계와 단계
+
+보정 (사람 평가 → 가중 카파 최대화, `config/calibrate.yaml`):
+
+```bash
+uv run --project cv python -m facade_cv.contamination.calibrate rate --rater kim --images runs/insp_001 --glob "windows/*/crop.jpg"
+uv run --project cv python -m facade_cv.contamination.calibrate agreement
+uv run --project cv python -m facade_cv.contamination.calibrate fit --regions runs/insp_001/result.json --doc docs/scoring.md
+```
+
 ## 목업 (fixtures/)
 
-박스 건물(12×24×8, 상대 단위) 외벽 4면(F1~F4), 창문 20개(청소 우선순위 level 1~5 = 6/5/4/3/2).
-오염 polygon은 래스터 면적으로 `type_ratios`·`score`를 계산하고 `contamination/grade.py`(`config/grading.yaml`)로 level을 매긴다.
+박스 건물(12×24×8, 상대 단위) 외벽 4면(F1~F4), 창문 20개(청소 우선순위 level 1~5 = 6/4/4/4/2, 그중 4개는 창 앞 나뭇가지 가림).
+crop에 오염 영역을 심각도별 색차로 그린 뒤 `contamination/grade.py` `grade_window`로 실제 측정해 CSI·level을 매긴다
+(유리 면적 = 창틀 마진·가림 제외, 영역별 ΔE → 심각도). 계산에 쓴 값은 `meta.csi_params`.
 `cv/tests/test_schema.py`가 같은 result.json을 pydantic과 web zod(`web/scripts/validate-result.mjs`) 양쪽으로 검증한다.
 `result.json` 안의 경로는 모두 `fixtures/` 기준 상대경로다.

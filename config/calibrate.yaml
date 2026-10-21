@@ -1,0 +1,22 @@
+# CSI 보정 도구 (facade_cv.contamination.calibrate) — docs/scoring.md "보정"
+ratings_dir: data/ratings          # 평가자별 <이름>.csv
+# 평가 화면 기준표 (level 라벨은 config/grading.yaml). 평가자는 유리 부분만 보고 판단한다
+rubric:
+  1: 오염이 거의 보이지 않는다
+  2: 가까이 보면 옅은 먼지·물자국. 시야 방해 없음 → 지켜본다
+  3: 먼지·얼룩이 눈에 띈다 (일부 영역). 다음 정기 청소 때
+  4: 넓은 영역 오염 또는 뚜렷한 얼룩·때. 시야 일부 방해
+  5: 심한 오염 (새똥·흙탕물·두꺼운 때)으로 시야 크게 방해. 먼저 청소
+notes:
+  - 창틀·창 앞 나무·전선·기둥은 보지 않는다 (유리만)
+  - 유리에 비친 풍경·실내 물건은 오염이 아니다
+  - 애매하면 낮은 쪽
+  - 키 1~5 평가 · b 되돌리기 · s 건너뛰기 · q 종료 (매번 저장, 다시 실행하면 이어서)
+font: /System/Library/Fonts/AppleSDGothicNeo.ttc   # 한글 기준표 글꼴 (없으면 기본 글꼴 — 한글이 깨질 수 있음)
+view_max_side: 900                 # 평가 화면 이미지 긴 변
+fit:
+  folds: 5                         # 교차 검증
+  seed: 0
+  kt_grid: [0.1, 1.0, 0.05]        # k_t 상대값 탐색 (시작, 끝, 간격) — 최댓값 1로 정규화 후 config k_t_max 배율로 환산
+  max_cut_candidates: 120          # 기준값 후보 (CSI 정렬값 사이 중간점, 많으면 분위수로 줄임)
+  passes: 3                        # 좌표 하강 반복

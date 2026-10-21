@@ -51,9 +51,11 @@ server와 web(TS 타입)은 이를 따른다. 좌표 규칙:
     {"id": "F1-R03-C02", "facade_id": "F1", "row": 3, "col": 2,
      "facade_rect": [u0, v0, u1, v1],
      "corners_3d": [[x,y,z],[x,y,z],[x,y,z],[x,y,z]],
-     "cleaning_level": 3, "cleaning_label": "가급적 청소", "score": 0.054,
+     "cleaning_level": 3, "cleaning_label": "가급적 청소", "csi": 0.031,
+     "glass_ratio": 0.77, "occluded_ratio": 0.05,
      "contamination": [
-       {"type": "dust", "area_ratio": 0.021, "polygon": [[0.1,0.2],[0.15,0.2],[0.15,0.25]]}
+       {"type": "dust", "area_ratio": 0.021, "severity": 2, "delta_e": 8.4,
+        "polygon": [[0.1,0.2],[0.15,0.2],[0.15,0.25]]}
      ],
      "type_ratios": {"dust": 0.021, "stain": 0.0, "grime": 0.033, "heavy": 0.0},
      "images": {"crop": "windows/F1-R03-C02/crop.jpg", "heatmap": "windows/F1-R03-C02/heatmap.png",
@@ -64,23 +66,30 @@ server와 web(TS 타입)은 이를 따른다. 좌표 규칙:
 }
 ```
 오염 유형 enum: dust(먼지), stain(얼룩), grime(때), heavy(심한 오염)
-미분석 창문 (오염 분석 T7 전, recon3d 출력): cleaning_level=null, cleaning_label="미분석", score=null,
-type_ratios=null, images.heatmap/overlay=null, contamination=[]. summary.level_counts에 "unanalyzed" 키. web은 회색 패널
+미분석 창문 (오염 분석 T7 전, recon3d 출력): cleaning_level=null, cleaning_label="미분석", csi=null,
+glass_ratio=null, occluded_ratio=null, type_ratios=null, images.heatmap/overlay=null, contamination=[].
+summary.level_counts에 "unanalyzed" 키. web은 회색 패널
+분석된 창문이 있으면 meta.csi_params (계산에 쓴 k_t·심각도 경계·창틀 마진·level 경계 스냅샷) 필수
 meta.recon_status (선택): {"mode": "3d"|"degraded", "num_facades", "registered_ratio", "warnings": [...]}
 
-## 청소 우선순위 규칙 (facade_cv/contamination/grade.py)
-관리자가 라벨만 보고 청소 여부를 판단하도록 5단계. score 구조·구간 방식은 [R2][R4][R5][R6] 참고, 수치는 자체 설정(미검증). 임계값·라벨·색은 config/grading.yaml (web/lib/palette.ts와 동기, 테스트로 검사)
-score = Σ(type_ratio × weight) , weight: dust 0.5, stain 0.8, grime 1.0, heavy 1.5
+## 청소 우선순위 규칙 (facade_cv/contamination/grade.py, docs/scoring.md)
+관리자가 라벨만 보고 청소 여부를 판단하도록 5단계. 지표는 창문 오염 심각도 지수 CSI (0~1):
+CSI = Σ_j (A_j × k_s(j) × k_t(j)) / (A_g × k_s_max × k_t_max)
+- A_g 유리 면적 = 창문 crop − 창틀 마진 − 가림(occlusion), A_j 오염 영역 중 유리 안 면적 [R2][R5]
+- k_s 심각도 1~3 = 깨끗한 유리 대비 CIELAB ΔE*ab (<6 / 6~15 / ≥15) [R5][R22][R23]
+- k_t 종류 가중치 dust 0.5, stain 0.8, grime 1.0, heavy 1.5 [R6]. 구조 [R2], 구간 방식 [R4]
+모든 수치는 **보정 전 초기값** (contamination/calibrate.py로 사람 평가에 맞춰 보정). 임계값·라벨·색은 config/grading.yaml
+(web/lib/palette.ts와 동기, 테스트로 검사)
 
-| level | 라벨 | score | 색 |
+| level | 라벨 | CSI | 색 |
 |---|---|---|---|
-| 1 | 청소 불필요 | < 0.02 | #22c55e |
-| 2 | 경과 관찰 | 0.02 ~ 0.05 | #84cc16 |
-| 3 | 가급적 청소 | 0.05 ~ 0.10 | #eab308 |
-| 4 | 청소 필요 | 0.10 ~ 0.20 | #f97316 |
-| 5 | 우선 청소 | ≥ 0.20 | #ef4444 |
+| 1 | 청소 불필요 | < 0.009 | #22c55e |
+| 2 | 경과 관찰 | 0.009 ~ 0.022 | #84cc16 |
+| 3 | 가급적 청소 | 0.022 ~ 0.044 | #eab308 |
+| 4 | 청소 필요 | 0.044 ~ 0.089 | #f97316 |
+| 5 | 우선 청소 | ≥ 0.089 | #ef4444 |
 
-경계값은 상위 level에 포함 (score 0.05 → level 3)
+경계값은 상위 level에 포함 (CSI 0.022 → level 3)
 
 ## 작업 규칙
 - 각 모듈은 CLI(`python -m facade_cv.<module> ...`)와 함수 API를 둘 다 제공

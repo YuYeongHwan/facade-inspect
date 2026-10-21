@@ -1,6 +1,6 @@
 """building.glb (박스 + 외벽 텍스처 사각형) + facades/<id>.jpg + windows/<id>/crop.jpg + result.json.
 
-오염 분석(T7) 전이라 창문은 모두 미분석: cleaning_level/score/type_ratios/heatmap/overlay = null.
+오염 분석(T7) 전이라 창문은 모두 미분석: cleaning_level/csi/type_ratios/glass_ratio/occluded_ratio/heatmap/overlay = null.
 """
 
 from datetime import datetime, timezone
@@ -60,7 +60,8 @@ def export_result(out: Path, inspection_id: str, meta: dict, body: trimesh.Trime
             "id": w.id, "facade_id": f.id, "row": w.row, "col": w.col,
             "facade_rect": [round(float(x), 5) for x in w.rect],
             "corners_3d": [[round(float(x), 5) for x in c] for c in w.corners_3d(f)],
-            "cleaning_level": None, "cleaning_label": UNANALYZED_LABEL, "score": None, "contamination": [],
+            "cleaning_level": None, "cleaning_label": UNANALYZED_LABEL, "csi": None, "glass_ratio": None,
+            "occluded_ratio": None, "contamination": [],
             "type_ratios": None, "images": {"crop": f"windows/{w.id}/crop.jpg", "heatmap": None, "overlay": None},
             "num_views": w.num_views,
         })

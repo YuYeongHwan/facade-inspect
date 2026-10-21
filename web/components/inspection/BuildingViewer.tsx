@@ -262,7 +262,7 @@ export default function BuildingViewer({
   );
 }
 
-/** 패널 색 범례: level · 라벨 · score 구간 (높은 level이 위). 미분석 창문이 있으면 맨 아래 회색. */
+/** 패널 색 범례: level · 라벨 · CSI 구간 (높은 level이 위). 미분석 창문이 있으면 맨 아래 회색. */
 function Legend({ unanalyzed }: { unanalyzed: boolean }) {
   return (
     <ul className="pointer-events-none absolute bottom-3 left-3 hidden space-y-1 rounded-md border border-neutral-800 bg-neutral-900/85 px-2.5 py-2 text-xs sm:block">

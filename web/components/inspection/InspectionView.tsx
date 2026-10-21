@@ -60,7 +60,7 @@ export default function InspectionView({ id }: { id: string }) {
           />
         </aside>
       </div>
-      <WindowDetail inspectionId={id} window={selected} onClose={close} />
+      <WindowDetail inspectionId={id} window={selected} csiParams={result.meta.csi_params ?? null} onClose={close} />
     </div>
   );
 }

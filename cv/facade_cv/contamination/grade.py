@@ -1,5 +1,8 @@
 """오염 score → 청소 우선순위 level 1~5 (config/grading.yaml).
 
+score 구조는 [R2] 심각도 지수 S_w = Σ(A_n·k_n·k_a,n)/(A·k)에서 면적 비율 × 유형 가중치만 남긴 것, level 구간은 PCI [R4] 방식.
+가중치·경계 수치는 자체 설정 (docs/REFERENCES.md).
+
 python -m facade_cv.contamination.grade 0.07   →  3 가급적 청소
 """
 

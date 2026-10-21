@@ -1,6 +1,6 @@
 """포인트 클라우드 → 외벽 평면 (facade 후보, Y-up 정렬된 좌표에서).
 
-이상치 제거 → 반복 RANSAC (detect_planes: Open3D segment_plane 등으로 바꿀 수 있게 이 함수만 의존) →
+이상치 제거 → 반복 RANSAC [R13] (detect_planes: Open3D segment_plane 등으로 바꿀 수 있게 이 함수만 의존) →
 수직 평면만 facade 후보 → 같은 면 병합 → 보이는 면 1개면 그대로, 2~4개면 공통 직교 격자로 스냅.
 격자에 안 맞는 면 (날개·출입구 등)은 실패로 보지 않고 extra로 남겨 보고한다.
 임계값은 촬영 거리(scene_scale) 비율 (config/recon.yaml planes).

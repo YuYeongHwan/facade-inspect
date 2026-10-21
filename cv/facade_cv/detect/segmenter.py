@@ -1,4 +1,4 @@
-"""YOLO11-seg 창문/외벽 분할 래퍼. 가중치·추론 설정은 config/detect.yaml."""
+"""YOLO11-seg [R8] 창문/외벽 분할 래퍼. 가중치·추론 설정은 config/detect.yaml."""
 
 from dataclasses import dataclass
 from pathlib import Path

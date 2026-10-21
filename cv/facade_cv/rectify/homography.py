@@ -4,7 +4,8 @@ python -m facade_cv.rectify.homography --image X [--out rectified.jpg]
 
 수평 소실점 v_h, 수직 소실점 v_v, 초점거리 f(K = diag(f, f, 1), 주점 = 이미지 중심)에서
 r_h = K⁻¹v_h, r_v = K⁻¹v_v (직교화), R = [r_h r_v r_h×r_v] → H = K Rᵀ K⁻¹ 는 외벽 축을 이미지 축에 맞춘다.
-f는 두 소실점이 유한하면 직교 조건 (v_h·v_v = -f²) 으로 추정, 아니면 config 기본값.
+f는 두 소실점이 유한하면 직교 조건 (v_h·v_v = -f²) 으로 추정, 아니면 config 기본값. [R11]
+선분 LSD [R12], 소실점 RANSAC [R13] (docs/REFERENCES.md).
 """
 
 from dataclasses import dataclass, field

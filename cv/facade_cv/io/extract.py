@@ -1,4 +1,5 @@
 """영상 프레임 추출 (Post-flight: COLMAP 입력용 키프레임). Live 소스는 facade_cv.io.source
+블러 = Laplacian 분산 [R15], 중복 = ORB [R14] 매칭 + RANSAC [R13] 호모그래피 겹침 (docs/REFERENCES.md).
 
 python -m facade_cv.io.extract --video X --out runs/<id>/frames --fps 3 --debug
 """

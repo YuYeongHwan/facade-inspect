@@ -1,4 +1,4 @@
-# facade_cv.rectify.homography — 소실점 기반 외벽 정면화 (detect 후처리, T6 텍스처 공용)
+# facade_cv.rectify.homography — 소실점 기반 외벽 정면화 (detect 후처리, T6 텍스처 공용) [R11][R12][R13]
 min_line_ratio: 0.02      # 긴 변 × 이 값보다 짧은 선분은 버림
 axis_tol_deg: 40          # 수평(±tol)/수직(90±tol)으로 분류. 그 사이 사선은 버림 (올려다본 영상의 수직선 수렴 감안)
 vp_inlier_deg: 1.5        # 선분 방향과 (선분 중점→소실점) 방향의 차이가 이 이하면 inlier

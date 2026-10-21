@@ -1,4 +1,4 @@
-"""CMP Facade (base+extended) → YOLO-seg (0=window, 1=facade).
+"""CMP Facade [R1] (base+extended, CC BY-SA 3.0) → YOLO-seg (0=window, 1=facade). 변환 규칙 표: data/DATASETS.md
 
 python -m facade_cv.detect.datasets.cmp_convert --src data/cmp --out data/yolo/cmp
 --src 아래를 재귀 탐색해 같은 이름의 .jpg/.png/.xml 묶음을 변환. 출력: <out>/images/*.jpg, <out>/labels/*.txt

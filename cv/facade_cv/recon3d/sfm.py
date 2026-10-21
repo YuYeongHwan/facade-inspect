@@ -1,4 +1,4 @@
-"""pycolmap SfM: T1 프레임 → SIFT → sequential(+루프 검출) / exhaustive 매칭 → incremental mapping.
+"""pycolmap SfM [R9]: T1 프레임 → SIFT [R16] → sequential(+루프 검출) / exhaustive 매칭 → incremental mapping.
 
 python -m facade_cv.recon3d.sfm --frames runs/<id>/frames --out runs/<id>/recon
 카메라 모델·공유 여부는 config/recon.yaml sfm. 등록 실패 프레임 비율을 리포트한다.

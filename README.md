@@ -1,6 +1,8 @@
 # Facade Inspect
 
 드론 영상 기반 건물 창문 오염도 분석 웹 시스템. 설계 원칙·데이터 계약은 [CLAUDE.md](CLAUDE.md) 참조.
+참고 자료(논문·데이터·도구) 출처는 [docs/REFERENCES.md](docs/REFERENCES.md) — 코드·문서의 `[R번호]`가 이 목록을 가리킨다.
+데이터셋 출처·라이선스·사용 장수·클래스 변환 규칙은 [data/DATASETS.md](data/DATASETS.md).
 
 ## 구조
 
@@ -158,7 +160,7 @@ row/col은 프레임 단위 임시값 — 최종 창문 ID는 3D 외벽 평면�
 
 ### 1. CMP Facade 변환
 
-CMP Facade Database (Tyleček & Šára, GCPR 2013, http://cmp.felk.cvut.cz/~tylecr1/facade/) — 연구 목적 사용, 인용 필요.
+CMP Facade Database [R1] (Tyleček & Šára, GCPR 2013, http://cmp.felk.cvut.cz/~tylecr1/facade/) — CC BY-SA 3.0, 인용 필요.
 
 ```bash
 mkdir -p data/cmp && cd data/cmp

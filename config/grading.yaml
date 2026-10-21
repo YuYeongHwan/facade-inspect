@@ -1,10 +1,12 @@
-# score = Σ(type_ratio × weight)
+# score = Σ(type_ratio × weight) — 면적 × 유형 가중 합 구조는 외벽 열화 심각도 지수 [R2],
+# 면적 비율을 척도로 쓰는 근거 [R5], 유형별 가중치를 두는 근거 [R6] (docs/REFERENCES.md).
+# 아래 가중치·경계 수치는 문헌 값이 아닌 자체 설정 — 실측으로 검증 전
 weights:
   dust: 0.5
   stain: 0.8
   grime: 1.0
   heavy: 1.5
-# 청소 우선순위 5단계. min_score = 그 level의 score 하한 (level 1은 0, 오름차순).
+# 청소 우선순위 5단계 (지수 → 구간별 등급 라벨: PCI [R4] 방식). min_score = 그 level의 score 하한 (level 1은 0, 오름차순).
 # score < 0.02 → 1 ≤ ... 0.05 → 3, 0.10 → 4, 0.20 ≤ → 5
 # 라벨·색은 web/lib/palette.ts LEVELS와 같아야 한다 (cv/tests/test_schema.py가 검사)
 levels:

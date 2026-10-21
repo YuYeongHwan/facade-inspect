@@ -69,7 +69,7 @@ type_ratios=null, images.heatmap/overlay=null, contamination=[]. summary.level_c
 meta.recon_status (선택): {"mode": "3d"|"degraded", "num_facades", "registered_ratio", "warnings": [...]}
 
 ## 청소 우선순위 규칙 (facade_cv/contamination/grade.py)
-관리자가 라벨만 보고 청소 여부를 판단하도록 5단계. 임계값·라벨·색은 config/grading.yaml (web/lib/palette.ts와 동기, 테스트로 검사)
+관리자가 라벨만 보고 청소 여부를 판단하도록 5단계. score 구조·구간 방식은 [R2][R4][R5][R6] 참고, 수치는 자체 설정(미검증). 임계값·라벨·색은 config/grading.yaml (web/lib/palette.ts와 동기, 테스트로 검사)
 score = Σ(type_ratio × weight) , weight: dust 0.5, stain 0.8, grime 1.0, heavy 1.5
 
 | level | 라벨 | score | 색 |
@@ -87,4 +87,6 @@ score = Σ(type_ratio × weight) , weight: dust 0.5, stain 0.8, grime 1.0, heavy
 - 새 기능마다 pytest 테스트 추가, 무거운 모델 테스트는 `@pytest.mark.slow`
 - 설정값은 config/*.yaml, 하드코딩 금지
 - 디버그 시각화는 runs/<id>/debug/ 에 저장하는 옵션(--debug) 제공
+- 외부 자료(데이터·식·코드·수치)를 쓰면 docs/REFERENCES.md에 등록하고 코드 주석과 문서에 [R번호]로 표시
+  (데이터셋은 data/DATASETS.md에도 출처·라이선스·사용 장수·클래스 변환 규칙 기록)
 - 작업 완료 시: 테스트 통과 확인 → 변경 요약 → README 해당 섹션 갱신

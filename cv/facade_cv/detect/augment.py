@@ -1,4 +1,4 @@
-"""config/augment.yaml → Ultralytics train 인자.
+"""config/augment.yaml → Ultralytics [R8] train 인자 (+ albumentations [R17]).
 
     YOLO("yolo11s-seg.pt").train(data="data/yolo/merged/data.yaml", **train_augment_args())
 """

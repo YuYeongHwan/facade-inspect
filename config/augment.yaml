@@ -1,4 +1,4 @@
-# YOLO11-seg 학습 증강 정책 — facade_cv.detect.augment.train_augment_args()로 model.train()에 전달
+# YOLO11-seg [R8] 학습 증강 정책 — facade_cv.detect.augment.train_augment_args()로 model.train()에 전달
 # 기하 변환은 Ultralytics가 polygon도 함께 변환한다. albumentations 항목은 픽셀 전용 변환만 쓴다.
 
 # 밝기 (HSV value). 역광·그늘진 외벽
@@ -16,7 +16,7 @@ flipud: 0.0               # 건물은 위아래가 고정
 mosaic: 1.0
 close_mosaic: 10
 
-# Ultralytics 기본 하이퍼파라미터에 없는 증강 → `augmentations` 인자(albumentations)로 전달
+# Ultralytics 기본 하이퍼파라미터에 없는 증강 → `augmentations` 인자(albumentations [R17])로 전달
 albumentations:
   - {name: RandomBrightnessContrast, brightness_limit: 0.0, contrast_limit: 0.3, p: 0.5}   # 대비 (밝기는 hsv_v)
   - {name: MotionBlur, blur_limit: [3, 11], p: 0.3}                                        # 드론 이동/진동 블러

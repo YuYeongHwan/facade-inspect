@@ -3,7 +3,7 @@
 # scene = 포인트에서 가장 가까운 카메라까지 거리의 중앙값 = 촬영 거리 (scale_known=false라 절대 단위가 없다).
 # SfM 깊이 잡음은 촬영 거리에 비례한다. 포인트 상자 대각선을 쓰면 긴 외벽을 따라 걸은 영상(b04: 길이 9 × 높이 1.3)에서
 # 임계값이 벽 높이의 10%가 되어 벽을 비스듬히 자르는 '거의 수평' 평면이 진짜 벽보다 inlier가 많아졌다.
-sfm:
+sfm:                            # COLMAP [R9], SIFT [R16] (docs/REFERENCES.md)
   camera_model: OPENCV          # 휴대폰(아이폰). SIMPLE_RADIAL은 b04에서 긴 직선 외벽이 휘었다 (k1만으로 왜곡 부족).
                                 # 드론 FPV 160° 광각: OPENCV_FISHEYE
   single_camera: true           # 모든 프레임이 같은 내부 파라미터. 아이폰 손떨림 보정(프레임마다 화각 변동)이면 false 시도

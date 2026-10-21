@@ -5,7 +5,7 @@ min_area_ratio:           # 클래스별, 이미지 면적 대비 이보다 작�
   window: 0.0001          # 먼 창문도 실제 창문 (XML 사각형 기준이라 잡음 조각 걱정 없음)
   facade: 0.0005
 
-cmp:
+cmp:                      # CMP Facade Database [R1] — data/DATASETS.md
   # 라벨 PNG 팔레트 index → CMP 클래스 (CMP label_names.txt 첫 두 열)
   index: {1: background, 2: facade, 3: window, 4: door, 5: cornice, 6: sill,
           7: balcony, 8: blind, 9: deco, 10: molding, 11: pillar, 12: shop}

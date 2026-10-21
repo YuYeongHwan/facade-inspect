@@ -20,6 +20,38 @@
 - 사용 부분: 창문/외벽 분할 학습 데이터 606장 (base 378 + extended 228). 12개 클래스 → window/facade 2개 클래스로 변환
   (`cv/facade_cv/detect/datasets/cmp_convert.py`, `config/dataset.yaml` cmp). 세부는 [data/DATASETS.md](../data/DATASETS.md)
 
+### [R19] ADE20K (SceneParsing / ADEChallengeData2016)
+- 저자: Bolei Zhou, Hang Zhao, Xavier Puig, Sanja Fidler, Adela Barriuso, Antonio Torralba
+- 연도·제목:
+  - [R19-a] 2017, Scene Parsing through ADE20K Dataset. IEEE CVPR, 633–641
+  - [R19-b] 2019, Semantic Understanding of Scenes through the ADE20K Dataset. IJCV, 127(3), 302–321 (Tete Xiao 외 공저 추가)
+- 링크: https://groups.csail.mit.edu/vision/datasets/ADE20K/ , http://sceneparsing.csail.mit.edu/
+  (데이터: http://data.csail.mit.edu/places/ADEchallenge/ADEChallengeData2016.zip, 923MB)
+- 라이선스: 이미지는 **비상업 연구·교육 목적만** (MIT CSAIL terms, 이미지 저작권은 원 소유자), 주석·코드 BSD-3.
+  공개 배포·상업 이용 시 별도 허가 필요
+- 사용 부분: v2 학습 데이터 — 실외 장면만 골라 windowpane→window, building→facade, tree/grass/plant/flower→vegetation,
+  pole→pole, door→door (`cv/facade_cv/detect/datasets/ade20k_convert.py`, `config/dataset.yaml` ade20k). 세부는 data/DATASETS.md
+
+### [R20] TTPLA
+- 저자: Rabab Abdelfattah, Xiaofeng Wang, Song Wang
+- 연도: 2020
+- 제목: TTPLA: An Aerial-Image Dataset for Detection and Segmentation of Transmission Towers and Power Lines
+- 학회: Asian Conference on Computer Vision (ACCV). arXiv:2010.10032
+- 링크: https://github.com/r3ab/ttpla_dataset (이미지는 README의 Google Drive 링크)
+- 라이선스: Apache-2.0 (GitHub 저장소 LICENSE)
+- 사용 부분: v2 학습 데이터 — cable→wire, tower_wooden→pole, 철탑(tower_lattice/tower_tucohy)·void 제외
+  (`cv/facade_cv/detect/datasets/ttpla_convert.py`, `config/dataset.yaml` ttpla). 제외 근거는 data/DATASETS.md
+
+### [R21] Roboflow Universe 창문 데이터셋
+Roboflow Universe(https://universe.roboflow.com)에 사용자가 올린 데이터셋. 저자·장수·클래스는 각 페이지 기준이며
+자동 조회가 막혀(HTTP 403) **[확인 필요: 다운로드 시 페이지에서 라이선스·클래스·버전 재확인]**. CC BY 계열만 사용 (출처 표시 필요)
+- [R21-a] Building Facade (workspace `building-facade`), building-facade-segmentation-instance, v4 (2,226장), CC BY 4.0
+  — https://universe.roboflow.com/building-facade/building-facade-segmentation-instance (facade, window, vegetation 등)
+- [R21-b] ir (workspace `ir-2znee`), Facade_test (382장), CC BY 4.0 — https://universe.roboflow.com/ir-2znee/facade_test (window, door)
+- [R21-c] mzworkspace (workspace `mzworkspace-segj7`), window-segment-main, CC BY 4.0
+  — https://universe.roboflow.com/mzworkspace-segj7/window-segment-main (window)
+- 사용 부분: v2 학습 데이터 창문 보강 (`cv/facade_cv/detect/datasets/roboflow_convert.py`, `config/dataset.yaml` roboflow)
+
 ## 오염 점수·청소 우선순위
 
 ### [R2] Gaspar & de Brito — 외벽 열화 심각도 지수 (Severity of degradation)

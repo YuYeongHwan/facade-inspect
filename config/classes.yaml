@@ -1,0 +1,8 @@
+# YOLO-seg 클래스 체계. 변환·병합·라벨링·학습·후처리가 모두 여기를 따른다 (facade_cv.config.class_names)
+# v2는 v1의 id 0,1을 그대로 두고 뒤에 붙인다 → v1 라벨·가중치를 v2 데이터와 같이 써도 id가 어긋나지 않는다
+active: v2
+sets:
+  v1: [window, facade]
+  v2: [window, facade, vegetation, wire, pole, door]
+# 창문 오검출 원인 (후처리 겹침 제거 대상). config/detect.yaml obstacles에서 클래스별 임계값
+obstacles: [vegetation, wire, pole, door]

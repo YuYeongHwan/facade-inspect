@@ -1,6 +1,6 @@
-"""CMP Facade [R1] (base+extended, CC BY-SA 3.0) → YOLO-seg (0=window, 1=facade). 변환 규칙 표: data/DATASETS.md
+"""CMP Facade [R1] (base+extended, CC BY-SA 3.0) → YOLO-seg (window, facade, v2는 door도). 변환 규칙 표: data/DATASETS.md
 
-python -m facade_cv.detect.datasets.cmp_convert --src data/cmp --out data/yolo/cmp
+python -m facade_cv.detect.datasets.cmp_convert --src data/cmp --out data/yolo/cmp  (--classes v1|v2, 기본 active)
 --src 아래를 재귀 탐색해 같은 이름의 .jpg/.png/.xml 묶음을 변환. 출력: <out>/images/*.jpg, <out>/labels/*.txt
 """
 
@@ -13,7 +13,7 @@ import numpy as np
 import typer
 from PIL import Image
 
-from facade_cv.config import load_config
+from facade_cv.config import class_names, load_config
 from facade_cv.detect.datasets.yolo import mask_to_polygons, simplify_polygon, write_label
 
 
@@ -33,9 +33,12 @@ def read_xml_rects(path: Path, labelname: str) -> list[tuple[float, float, float
     return rects
 
 
-def convert_label(label: np.ndarray, window_rects: list, cfg: dict) -> list[tuple[int, np.ndarray]]:
-    """CMP 팔레트 index 라벨 (H,W) + XML 창문 사각형 → [(class id, 정규화 polygon)]."""
-    cmp, names, eps = cfg["cmp"], cfg["names"], cfg["polygon_eps"]
+def convert_label(
+    label: np.ndarray, window_rects: list, cfg: dict, names: list[str] | None = None
+) -> list[tuple[int, np.ndarray]]:
+    """CMP 팔레트 index 라벨 (H,W) + XML 창문 사각형 → [(class id, 정규화 polygon)]. names에 없는 클래스는 버림."""
+    cmp, eps = cfg["cmp"], cfg["polygon_eps"]
+    names = names or class_names()
     index = {int(k): v for k, v in cmp["index"].items()}
     h, w = label.shape
     min_area = {k: v * h * w for k, v in cfg["min_area_ratio"].items()}
@@ -57,12 +60,18 @@ def convert_label(label: np.ndarray, window_rects: list, cfg: dict) -> list[tupl
     facade_ids = [i for i, n in index.items() if n in cmp["facade"]]
     for poly in mask_to_polygons(np.isin(label, facade_ids), eps, min_area["facade"]):
         instances.append((names.index("facade"), poly / [w, h]))
+
+    if "door" in names:  # v2: 문 연결 성분마다 하나 (CMP 문은 서로 떨어져 있다)
+        door_ids = [i for i, n in index.items() if n in cmp["door"]]
+        for poly in mask_to_polygons(np.isin(label, door_ids), eps, min_area["door"]):
+            instances.append((names.index("door"), poly / [w, h]))
     return instances
 
 
-def convert_cmp(src: str | Path, out: str | Path, cfg: dict | None = None) -> int:
+def convert_cmp(src: str | Path, out: str | Path, cfg: dict | None = None, names: list[str] | None = None) -> int:
     """변환한 이미지 수를 반환."""
     cfg = cfg or load_config("dataset")
+    names = names or class_names()
     src, out = Path(src), Path(out)
     known = {int(k) for k in cfg["cmp"]["index"]}
     unknown: set[int] = set()
@@ -79,7 +88,7 @@ def convert_cmp(src: str | Path, out: str | Path, cfg: dict | None = None) -> in
         if not xml.exists():
             raise FileNotFoundError(f"{xml}: CMP XML needed for window rectangles")
         rects = read_xml_rects(xml, cfg["cmp"]["window_xml_label"])
-        write_label(out / "labels" / f"{png.stem}.txt", convert_label(label, rects, cfg))
+        write_label(out / "labels" / f"{png.stem}.txt", convert_label(label, rects, cfg, names))
         (out / "images").mkdir(parents=True, exist_ok=True)
         shutil.copy2(jpg, out / "images" / jpg.name)
         n += 1
@@ -88,8 +97,12 @@ def convert_cmp(src: str | Path, out: str | Path, cfg: dict | None = None) -> in
     return n
 
 
-def main(src: Path = typer.Option(..., exists=True, file_okay=False), out: Path = typer.Option(...)) -> None:
-    print(f"{convert_cmp(src, out)} images → {out}")
+def main(
+    src: Path = typer.Option(..., exists=True, file_okay=False),
+    out: Path = typer.Option(...),
+    classes: str = typer.Option(None, help="v1 | v2 (config/classes.yaml, 기본 active)"),
+) -> None:
+    print(f"{convert_cmp(src, out, names=class_names(classes))} images → {out}")
 
 
 if __name__ == "__main__":

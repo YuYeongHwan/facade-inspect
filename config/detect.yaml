@@ -20,3 +20,10 @@ grid:
   min_size_members: 3 # 크기 비교는 행/열에 창문이 이 이상일 때만
   fill_tol: 0.5       # 빈칸 중심 ~ 보완 후보 중심 허용 거리 (열 폭·행 높이 비율)
   min_occupancy: 0.4  # 채워진 칸 / (행 수 × 열 수)가 이보다 작으면 격자를 못 믿는다 → 빈칸·보완 후보 생략
+obstacles:            # 장애물 클래스 (config/classes.yaml obstacles) — v2 가중치만 검출. v1이면 검출이 없어 이 단계는 그대로 통과
+  conf: 0.25          # 이 이상인 장애물 검출만 사용
+  # |창문 마스크 ∩ 장애물 마스크| / |창문 마스크| ≥ 값이면 그 장애물 위의 오검출로 보고 제거 (reason on_<class>).
+  # 진짜 창문은 모델이 가린 부분을 창 마스크에서 빼므로 겹침이 작다. door는 문 유리를 창으로 잡는 경우라 낮게
+  remove_overlap: {vegetation: 0.5, wire: 0.5, pole: 0.5, door: 0.3}
+  # 창 사각형 안에서 이 클래스 마스크 = 가림(occlusion). 오염 면적 계산에서 뺄 영역. door는 가림이 아니라 오검출 원인이라 제외
+  occluders: [vegetation, wire, pole]

@@ -19,13 +19,15 @@ from facade_cv.detect.segmenter import Detection, WindowSegmenter, draw_detectio
 from facade_cv.rectify.homography import draw_lines
 
 COLORS = {"ok": (0, 200, 0), "flagged": (0, 140, 255), "fill": (255, 255, 0), "removed": (0, 0, 255),
-          "outside": (255, 0, 255), "empty": (0, 0, 255), "facade": (0, 230, 230)}  # BGR
+          "outside": (255, 0, 255), "empty": (0, 0, 255), "facade": (0, 230, 230), "obstacle": (0, 0, 0),
+          "occlusion": (255, 255, 255)}  # BGR
 SHORT = {"off_grid": "off", "odd_width": "W?", "odd_height": "H?", "fill_candidate": "fill"}
 
 
 def window_style(w: Window) -> tuple[tuple[int, int, int], str]:
     if w.reason:
-        return COLORS["outside" if w.reason == "outside_facade" else "removed"], w.reason
+        key = "outside" if w.reason == "outside_facade" else "obstacle" if w.reason.startswith("on_") else "removed"
+        return COLORS[key], w.reason
     cell = "-" if w.row is None else f"r{w.row}c{w.col}"
     flags = " ".join(SHORT.get(f, f) for f in w.flags)
     key = "fill" if "fill_candidate" in w.flags else "flagged" if w.flags else "ok"
@@ -56,15 +58,19 @@ def draw_stages(img: np.ndarray, dets: list[Detection], res: PostResult, cfg: di
         cnts, _ = cv2.findContours(res.facade_mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(out, cnts, -1, COLORS["facade"], max(2, round(2 * scale)))
     _draw_quads(out, [(w.corners, w) for w in res.removed + res.windows + res.fill_candidates], scale)
+    for w in res.windows:  # 가림 영역 (흰 윤곽)
+        cv2.polylines(out, [np.round(p).astype(np.int32) for p in w.occlusion], True, COLORS["occlusion"], 1, cv2.LINE_AA)
     c = res.to_dict()["counts"]
     reasons = {r: sum(w.reason == r for w in res.removed) for r in ("small", "not_rect", "outside_facade")}
+    on_obstacle = sum(bool(w.reason and w.reason.startswith("on_")) for w in res.removed)
     draw_legend(out, [
         f"raw {c['raw']} -> final {c['final']} (+fill {c['fill_candidates']}) | removed: quad {reasons['small'] + reasons['not_rect']}"
-        f" (small {reasons['small']}, not_rect {reasons['not_rect']}), outside_facade {reasons['outside_facade']}",
+        f" (small {reasons['small']}, not_rect {reasons['not_rect']}), on_obstacle {on_obstacle},"
+        f" outside_facade {reasons['outside_facade']}",
         f"flagged {c['flagged']}  fill_candidate {c['fill_candidates']}  empty_cells {c['empty_cells']}"
         f"  rectified {'yes' if res.rect else 'NO'}",
         "green ok | orange flagged (off=off_grid W?/H?=odd size) | cyan fill | red removed(quad) | magenta outside"
-        " | yellow facade",
+        " | black on_obstacle | white occlusion | yellow facade",
         *res.warnings,
     ], scale)
     return out

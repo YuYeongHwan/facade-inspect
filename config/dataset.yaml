@@ -1,9 +1,13 @@
-# 창문/외벽 인스턴스 분할 데이터셋 (facade_cv.detect.datasets)
-names: [window, facade]   # YOLO class id 순서 (0=window, 1=facade)
+# 창문/외벽(+장애물) 인스턴스 분할 데이터셋 (facade_cv.detect.datasets)
+# 클래스 이름·id 순서는 config/classes.yaml (각 CLI --classes v1|v2, 기본 active). 활성 셋에 없는 클래스는 변환 시 버린다
 polygon_eps: 0.005        # approxPolyDP epsilon (윤곽 길이 대비)
 min_area_ratio:           # 클래스별, 이미지 면적 대비 이보다 작은 인스턴스는 버림
   window: 0.0001          # 먼 창문도 실제 창문 (XML 사각형 기준이라 잡음 조각 걱정 없음)
   facade: 0.0005
+  vegetation: 0.0005
+  wire: 0.00002           # 전선은 가늘어 면적이 작다 (1280px 영상에서 ~30px)
+  pole: 0.0002
+  door: 0.0005
 
 cmp:                      # CMP Facade Database [R1] — data/DATASETS.md
   # 라벨 PNG 팔레트 index → CMP 클래스 (CMP label_names.txt 첫 두 열)
@@ -15,15 +19,84 @@ cmp:                      # CMP Facade Database [R1] — data/DATASETS.md
   window: [window, blind]
   # 벽 계열 → facade 하나로 합침 (구멍은 채운 외곽 polygon). 제외: background, door, shop, balcony
   facade: [facade, molding, cornice, pillar, sill, deco, blind]
+  door: [door]            # v2: 연결 성분마다 door 인스턴스 하나 (v1이면 버림)
+
+ade20k:                   # ADE20K SceneParsing [R19] — data/DATASETS.md. 이름은 objectInfo150.csv Name 열의 첫 이름
+  # 실외 장면만: sceneCategories.txt 장면이 이 목록에 있고, sky 픽셀 비율 ≥ min_sky_ratio
+  outdoor_scenes: [street, building_facade, skyscraper, house, apartment_building_outdoor, office_building,
+                   hotel_outdoor, church_outdoor, mosque_outdoor, temple_east_asia, temple_south_asia, castle, palace,
+                   plaza, courtyard, alley, crosswalk, downtown, residential_neighborhood, parking_lot, gas_station,
+                   bridge, tower, embassy, schoolhouse, hospital, library_outdoor, museum_outdoor, shopfront,
+                   building_complex, inn_outdoor, motel, bazaar_outdoor, market_outdoor, campus, casino_outdoor]
+  min_sky_ratio: 0.05
+  # 매핑: facade는 building만 — wall은 실외 장면에서도 담장·실내벽이 섞여 제외
+  map: {windowpane: window, building: facade, tree: vegetation, grass: vegetation, plant: vegetation,
+        flower: vegetation, pole: pole, door: door}
+  min_facade_ratio: 0.1   # building 픽셀 비율이 이보다 작으면 버림 (건물이 주인공인 장면만)
+  require: [window]       # 이 클래스 인스턴스가 하나 이상 있어야 사용
+
+ttpla:                    # TTPLA [R20] — labelme JSON (shape label). 매핑에 없는 라벨은 버림 (철탑, void)
+  map: {cable: wire, tower_wooden: pole}
+  max_side: 1280          # 원본 3840×2160 → 긴 변을 이 크기로 줄여 저장
+
+roboflow:                 # Roboflow Universe [R21] — "YOLOv8/YOLO11" seg export (data.yaml + train/valid/test)
+  licenses: ["CC BY 4.0", "CC BY-SA 4.0"]   # 이 라이선스만 허용
+  datasets:               # 키 = data/external/roboflow/<키>/. map에 없는 클래스는 버림 [확인 필요: 실제 export 클래스명]
+    building_facade:      # [R21-a]
+      url: https://universe.roboflow.com/building-facade/building-facade-segmentation-instance
+      version: 4
+      license: CC BY 4.0
+      map: {window: window, facade: facade, vegetation: vegetation}
+    facade_test:          # [R21-b]
+      url: https://universe.roboflow.com/ir-2znee/facade_test
+      version: null
+      license: CC BY 4.0
+      map: {window: window, windows: window, door: door, doors: door}
+    window_segment:       # [R21-c]
+      url: https://universe.roboflow.com/mzworkspace-segj7/window-segment-main
+      version: null
+      license: CC BY 4.0
+      map: {window: window, windows: window}
+
+# 공개 데이터 출처 (merge --ext 이름 → 참고문헌·라이선스). merge가 sources.json에 장수와 함께 기록 → MODEL_CARD.md
+sources:
+  cmp: {ref: R1, license: CC BY-SA 3.0}
+  ade20k: {ref: R19, license: 이미지 비상업 연구·교육용 (주석 BSD-3)}
+  ttpla: {ref: R20, license: Apache-2.0}
+  roboflow_building_facade: {ref: R21-a, license: CC BY 4.0}
+  roboflow_facade_test: {ref: R21-b, license: CC BY 4.0}
+  roboflow_window_segment: {ref: R21-c, license: CC BY 4.0}
+
+# 공개 데이터 장수 상한 (merge_datasets). Colab T4에서 Stage1(imgsz 640, 35에폭)이 3시간 안에 끝나게 — 노트북 0번 셀 예상 시간
+# 소스 이름은 merge --ext 이름. roboflow_*는 roboflow로 합산. null = 제한 없음
+balance:
+  max_total: 3000         # 공개 데이터 전체. 넘으면 상한 없는(null) 소스는 두고 나머지를 비율대로 줄임
+  max_images: {cmp: null, ade20k: 1500, ttpla: 200, roboflow: 1200}
+  # 상한 안에서는 희귀 클래스(전체 인스턴스 빈도 역수)를 가진 이미지부터 남긴다
 
 split:
   seed: 0
   cmp: {train: 0.9, val: 0.1, test: 0.0}
+  public: {train: 0.9, val: 0.1, test: 0.0}   # cmp 외 공개 데이터. test는 반드시 0 (시험셋은 자체 촬영만)
   own: {train: 0.6, val: 0.2, test: 0.2}   # val/test는 비율과 무관하게 최소 1그룹 보장
   # 자체 이미지 그룹 키 (파일명 stem에 대한 정규식 group 1). 같은 그룹은 같은 split으로 → 연속 프레임 누수 방지
   # 예: flightA__frame_000123.jpg → flightA. 매칭 안 되면 이미지 하나가 한 그룹
   own_group_pattern: "^(.+?)__"
+  # flight: 영상(비행) 하나가 한 그룹 / segment: 영상 안 시간 구간 (프레임 index // segment_frames) — 영상이 하나뿐일 때
+  own_group_by: segment
+  own_frame_pattern: "__frame_(\\d+)$"   # 원본 영상 프레임 index (io.extract 파일명)
+  segment_frames: 600     # 30fps × 20초
+  guard_frames: 60        # 다른 split인 인접 구간 경계 ±이 프레임 이내 이미지는 버림 (이웃 프레임 누수 방지)
 
 prelabel:
   conf: 0.25
   imgsz: 1280
+
+select:                   # 라벨링 프레임 선택 (label_studio.select_frames)
+  fps: 2                  # 후보 샘플링
+  max_side: 1920
+  count: 150
+  bins: 15                # 영상을 이 개수 시간 구간으로 나눠 구간마다 count/bins장
+  dhash_min_dist: 10      # 64bit dHash 해밍거리가 이보다 가까운 프레임은 이미 고른 것과 비슷 → 건너뜀
+  removed_weight: 0.05    # 점수 = (1 - v1 window∪facade 피복률) + 제거된 창문 수 × 이 값
+  batches: 3              # 라벨러 수

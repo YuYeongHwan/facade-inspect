@@ -9,10 +9,15 @@
 |---|---|---|---|---|---|
 | CMP Facade Database — base | Tyleček & Šára, GCPR 2013 [R1] <br> https://cmp.felk.cvut.cz/~tylecr1/facade/ | CC BY-SA 3.0 | 378 | 378 (분할 학습) | `data/cmp/base` |
 | CMP Facade Database — extended | 〃 [R1] | CC BY-SA 3.0 | 228 | 228 (분할 학습) | `data/cmp/extended` |
+| ADE20K SceneParsing (ADEChallengeData2016) | Zhou et al., CVPR 2017 / IJCV 2019 [R19] <br> http://sceneparsing.csail.mit.edu/ | 이미지 **비상업 연구·교육용만**, 주석 BSD-3 | 22,210 (train 20,210 + val 2,000) | 실외 선별 후 ≤1,500 (v2 분할 학습) — 다운로드 후 갱신 | `data/external/ade20k` |
+| TTPLA | Abdelfattah, Wang, Wang, ACCV 2020 [R20] <br> https://github.com/r3ab/ttpla_dataset | Apache-2.0 | 1,100 (3840×2160) | ≤200 (v2, wire·pole) — 다운로드 후 갱신 | `data/external/ttpla` |
+| Roboflow building-facade-segmentation-instance v4 | Roboflow Universe `building-facade` [R21-a] | CC BY 4.0 | 2,226 | Roboflow 합계 ≤1,200 (v2) — 다운로드 후 갱신 | `data/external/roboflow/building_facade` |
+| Roboflow Facade_test | Roboflow Universe `ir-2znee` [R21-b] | CC BY 4.0 | 382 | 〃 | `data/external/roboflow/facade_test` |
+| Roboflow window-segment-main | Roboflow Universe `mzworkspace-segj7` [R21-c] | CC BY 4.0 | [확인 필요] | 〃 | `data/external/roboflow/window_segment` |
 | b01_songsan (자체 촬영) | 2026-10-07, 지상 정지 촬영, 맑음 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b01_songsan` |
 | b02_smilen (자체 촬영) | 2026-10-07, 지상, 올려다보는 각도 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b02_smilen` |
 | b03_shopglass (자체 촬영) | 2026-10-07, 근접, 반사 심함·오염 있음 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b03_shopglass` |
-| b04_shcool (자체 촬영) | 2026-10-14, 1층 한 바퀴 이동 촬영 | 자체 소유 | 영상 1개 | 0 (학습) / 프레임 80·266장 (3D 복원 테스트), 실시간 검출 테스트 | `data/raw/videos/b04_shcool` |
+| b04_shcool (자체 촬영) | 2026-10-14, 1층 한 바퀴 이동 촬영 (3840×2160, 30fps, 325초) | 자체 소유 | 영상 1개 | v2 라벨링 150장 (장애물 위주, 라벨링 전) / 프레임 80·266장 (3D 복원 테스트), 실시간 검출 테스트 | `data/raw/videos/b04_shcool`, 라벨링용 `data/own/b04_obstacle` |
 
 - CMP 분할 (`data/yolo/cmp_only`, `config/dataset.yaml` split.cmp, seed 0): train 545 / val 61 / test 0
 - 자체 촬영 메타데이터(날짜·날씨·각도·비고): `data/raw/videos/captures.csv`. 촬영 장비: 아이폰 (`config/recon.yaml` sfm.camera_model 주석)
@@ -21,7 +26,52 @@
 - CC BY-SA 3.0: CMP에서 파생한 YOLO 라벨(`data/yolo/cmp*`)을 배포할 때는 출처 표시 + 같은 라이선스 필요
 - 자체 영상에는 행인·차량이 찍혀 있다. 외부 공개 시 얼굴·번호판 처리 필요
 
-## 클래스 변환 규칙 → YOLO-seg (0=window, 1=facade)
+## v2 공개 데이터 장수 (merge_datasets balance)
+
+`config/dataset.yaml balance`: 공개 전체 ≤ **3,000장** (CMP 전체 606장 + ADE20K ≤1,500 + TTPLA ≤200 + Roboflow 합 ≤1,200).
+전체가 넘으면 상한 있는 소스를 비율대로 줄인다. 상한 안에서는 가진 클래스 중 가장 희귀한 클래스(전체 인스턴스 빈도)가
+드문 이미지부터 남긴다 (door·pole·wire가 있는 이미지 우선). 이유: 무료 Colab T4에서 Stage1(imgsz 640, 35에폭)이
+3시간 안에 끝나야 한다 — v1 실측(550장×100에폭@1024 = 2.1h) 기준 3,000장 ≈ 1.6h. 실제 장수는 merge 출력 `stats.json`/`sources.json`.
+
+## 분할 규칙 (v2)
+
+- **시험셋 = 자체 촬영만**: 공개 데이터는 train 0.9 / val 0.1 / test 0 (`split.cmp`, `split.public` — test가 0이 아니면 merge가 에러)
+- 자체 데이터는 그룹 단위 (`split.own_group_by`): 건물(영상)이 여럿이면 `flight`(영상 하나 = 그룹),
+  b04 하나뿐인 지금은 `segment` — 프레임 index // 600 (30fps × 20초) 구간이 한 그룹. 서로 다른 split에 속한
+  이웃 구간 경계 ±60프레임(2초) 안의 이미지는 버린다 (이웃 프레임이 train과 test에 섞이지 않게)
+- train 0.6 / val 0.2 / test 0.2 (그룹 수 기준), val·test 최소 1그룹
+
+## 클래스 변환 규칙 → YOLO-seg v2 (`config/classes.yaml`)
+
+`0=window, 1=facade, 2=vegetation, 3=wire, 4=pole, 5=door` (v1 = 앞의 2개, id 동일). 변환기마다 `--classes v1|v2`.
+활성 클래스셋에 없는 클래스는 버린다 → 같은 원본에서 v1/v2 라벨을 모두 만들 수 있다.
+
+| 데이터셋 | window (0) | facade (1) | vegetation (2) | wire (3) | pole (4) | door (5) | 제외 |
+|---|---|---|---|---|---|---|---|
+| CMP [R1] | 아래 v1 규칙 | 아래 v1 규칙 | — | — | — | door 픽셀 연결 성분마다 1 | background, shop, balcony |
+| ADE20K [R19] | windowpane | **building만** | tree, grass, plant, flower | — | pole | door | wall 포함 나머지 전부 |
+| TTPLA [R20] | — | — | — | cable | tower_wooden | — | tower_lattice, tower_tucohy, void |
+| Roboflow [R21] | 데이터셋별 `config roboflow.datasets.*.map` (window/windows) | building_facade의 facade | building_facade의 vegetation | — | — | facade_test의 door | 매핑 없는 클래스 (street, car, fence 등) |
+| 자체 (Label Studio) | window | facade | vegetation | wire | pole | door | — (`docs/labeling_guide.md`) |
+
+ADE20K·Roboflow semantic 원본의 인스턴스 = 클래스 마스크의 **연결 성분** (붙은 창문은 하나로 합쳐짐 — 한계).
+
+### ADE20K 선별 기준과 제외 이유
+- **실외 장면만**: `sceneCategories.txt`의 장면이 `config ade20k.outdoor_scenes`(street, building_facade, skyscraper, house 등
+  36개)에 있는 이미지. ADE20K는 실내가 대부분이라 그대로 쓰면 실내 창·문·벽이 대량으로 섞여 드론 외벽 시점과 동떨어진다
+- **sky 픽셀 ≥ 5%** (`min_sky_ratio`): 장면 이름이 실외여도 건물 안을 찍은 사진·근접 사진을 한 번 더 거른다
+- **building 픽셀 ≥ 10%** (`min_facade_ratio`) 그리고 **window 인스턴스 ≥ 1** (`require`): 건물 외벽이 주인공인 장면만
+- **facade = building만, wall 제외**: ADE20K의 wall은 실외 장면에서도 담장·옹벽·실내 벽이 섞여 있다.
+  wall을 facade로 넣으면 담장 앞 창 없는 면을 외벽으로 배워 외벽 필터(후처리 b)가 무력해진다
+
+### TTPLA 사용 범위 결정
+- cable → wire: 도심 전선과 같은 물체 (항공 시점이지만 가는 선 모양은 같다)
+- tower_wooden → pole: 목재 전신주는 도심 전봇대와 형태(수직 단일 기둥)가 같다
+- tower_lattice·tower_tucohy 제외: 송전 철탑은 건물 외벽 앞에 서 있지 않고, 넣으면 pole이 격자 철골·건물 장식
+  기둥으로 일반화될 위험이 있다. void(불명확 영역) 제외
+- 매핑된 인스턴스가 없는 이미지는 버리고, 긴 변 1280px로 줄여 저장. 항공 시점이라 장수 상한을 200장으로 낮게
+
+## 클래스 변환 규칙 v1 → YOLO-seg (0=window, 1=facade)
 
 설정: `config/dataset.yaml`. 변환 코드: `cv/facade_cv/detect/datasets/cmp_convert.py`, `label_studio/export_to_yolo.py`
 

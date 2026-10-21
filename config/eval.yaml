@@ -1,0 +1,4 @@
+# 모델 비교 평가 (facade_cv.eval.compare) — 자체 test셋
+conf: 0.4          # 오검출을 세는 창문 예측 confidence (노트북 COUNT_CONF와 같게)
+iou_thr: 0.5       # GT 창문과 mask IoU가 이 이상이면 정검출 (오검출 아님)
+overlap_thr: 0.5   # 예측 창문 면적 중 GT 장애물(door·vegetation·wire·pole)과 겹친 비율이 이 이상이면 "장애물 위 오검출"

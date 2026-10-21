@@ -22,7 +22,8 @@ cv/                 파이썬 패키지 facade_cv (uv, Python 3.11)
       predict.py    이미지 폴더 예측 → 마스크 오버레이 (io.extract 출력 폴더 그대로 입력)
       postprocess.py 마스크 → 4점 사각형 → 외벽 필터 → 격자 정규화 (row/col/flags)
       run.py        검출 + 후처리 CLI → detect/detections.json (+ --debug 단계별 시각화)
-      datasets/     창문/외벽 분할 데이터셋 도구 (cmp_convert, label_studio/, merge_datasets)
+      datasets/     분할 데이터셋 도구 (cmp/ade20k/ttpla/roboflow_convert, label_studio/, merge_datasets)
+    eval/compare.py 자체 시험셋 모델 비교 (v1 vs v2: mAP, 장애물 위 오검출, 예시 그리드)
     rectify/homography.py  소실점 두 개로 외벽 정면화 호모그래피 (detect 후처리·T6 공용)
     contamination/grade.py  score → 청소 우선순위 level 1~5 (config/grading.yaml)
     live/run.py     실시간 창문 검출 (소스 → segmenter + postprocess, 프레임 단위) → 오버레이 + JSON 라인
@@ -141,6 +142,10 @@ YOLO-seg는 conf × `fill_conf_ratio`까지 낮춰 한 번 돌리고, conf 미�
 
 1. **quad**: 마스크 윤곽 → approxPolyDP 4점(볼록), 안 되면 minAreaRect. 꼭짓점 TL,TR,BR,BL.
    `min_area_px` 미만(`small`), 직사각형도 `min_rectangularity` 미만(`not_rect`)은 제거
+1-2. **장애물** (v2 가중치, `config/detect.yaml obstacles`): 창 마스크가 vegetation·wire·pole·door 마스크와 `remove_overlap`
+   이상 겹치면 그 장애물 위 오검출로 보고 제거(`on_door` 등). 남은 창의 사각형 안 vegetation·wire·pole 영역은
+   `occlusion`(polygon, 픽셀) + `occluded_ratio`로 결과에 넣는다 — 오염 계산에서 면적을 뺄 부분.
+   v1 가중치는 장애물 클래스가 없어 이 단계가 아무것도 바꾸지 않는다 (출력 형식도 기존과 같음)
 2. **외벽 필터**: 외벽 마스크(창문 자리 구멍을 메우고 `facade_filter.margin_ratio`만큼 팽창) 밖 창문 제거(`outside_facade`).
    외벽이 없거나, 창문 bbox 합집합보다 작거나, 창문 `max_outside` 비율 이상이 밖이면 외벽 검출 실패로 보고 건너뛴다(경고)
 3. **격자**: 외벽(실패 시 창문 볼록 껍질) 안 LSD 직선 → 수평·수직 소실점 → 정면화 (`config/rectify.yaml`, 실패 시 원본 좌표).
@@ -149,14 +154,31 @@ YOLO-seg는 conf × `fill_conf_ratio`까지 낮춰 한 번 돌리고, conf 미�
    점유율이 `grid.min_occupancy` 미만(코너 건물처럼 여러 면이 섞임)이면 빈칸·보완 후보는 만들지 않는다(경고 `grid_unreliable`)
 
 출력 `<frames>/../detect/detections.json` — 이미지마다 counts(final은 보완 후보 제외), windows(corners, conf, row, col, flags),
-fill_candidates, removed(reason), empty_cells, warnings. `--debug`: `debug/detect/<stem>_stages.jpg`(초록 OK, 주황 flag, 하늘 fill, 빨강 quad 제거,
+fill_candidates, removed(reason), empty_cells, warnings, obstacles(검출된 장애물 클래스). 가림이 있는 창에만 occluded_ratio·occlusion.
+`--debug`: `debug/detect/<stem>_stages.jpg`(초록 OK, 주황 flag, 하늘 fill, 빨강 quad 제거, 검정 장애물 위 제거, 흰 윤곽 가림,
 자홍 외벽 밖, 노랑 외벽 영역), `_rectified.jpg`(정면화 + row/col + 빈칸 X), `_lines.jpg`(직선 후보 회색, 소실점 inlier 파랑/빨강).
 row/col은 프레임 단위 임시값 — 최종 창문 ID는 3D 외벽 평면에서 정한다.
 
 ## 창문/외벽 분할 데이터셋 (facade_cv.detect.datasets)
 
-클래스: `0=window`, `1=facade` (Ultralytics YOLO-seg polygon 포맷, `config/dataset.yaml`의 `names`).
+클래스 (`config/classes.yaml`, Ultralytics YOLO-seg polygon 포맷): **v2** `0=window, 1=facade, 2=vegetation, 3=wire, 4=pole, 5=door`
+(기본, active) / v1 `0=window, 1=facade`. v2는 v1 id를 그대로 둬서 v1 라벨·가중치와 호환. 모든 변환·병합 CLI에 `--classes v1|v2`.
 각 도구의 출력은 `<dir>/images/*`, `<dir>/labels/*.txt`이고, `merge_datasets`가 이것들을 합쳐 분할한다.
+출처·라이선스·장수·변환 규칙은 [data/DATASETS.md](data/DATASETS.md), 서지는 [docs/REFERENCES.md](docs/REFERENCES.md).
+
+### 0. 공개 데이터 (v2) — 사람이 `data/external/<이름>/`에 받아 둔다
+
+변환기는 폴더가 없으면 다운로드 안내만 출력하고 건너뛴다.
+
+| 데이터 | 받는 곳 | 가입 | 용량 | 라이선스 | 변환 |
+|---|---|---|---|---|---|
+| ADE20K [R19] | `curl -LO http://data.csail.mit.edu/places/ADEchallenge/ADEChallengeData2016.zip` → `data/external/ade20k/`에 unzip | 불필요 | 923MB (해제 ~2.3GB) | 이미지 **비상업 연구·교육용만** (MIT CSAIL terms), 주석 BSD-3 | `python -m facade_cv.detect.datasets.ade20k_convert` |
+| TTPLA [R20] | https://github.com/r3ab/ttpla_dataset README의 Google Drive zip → `data/external/ttpla/` | 불필요 (Google 계정으로 받기) | 수 GB [확인 필요] | Apache-2.0 | `... .ttpla_convert` |
+| Roboflow [R21] | 데이터셋 페이지 → Download → "YOLOv8" 형식 zip → `data/external/roboflow/<키>/` (키·URL: `config/dataset.yaml roboflow.datasets`) | **필요** (무료 계정) | 수백 MB | CC BY 4.0 (화이트리스트 외 거부) | `... .roboflow_convert` |
+
+- ADE20K: 실외 장면(`sceneCategories.txt`) + sky ≥5% + building ≥10% + 창문 있음만. facade = building만 (wall 제외)
+- TTPLA: cable → wire, tower_wooden → pole (철탑 제외), 긴 변 1280px로 축소
+- Roboflow: 데이터셋별 클래스 매핑(`map`)에 없는 클래스는 버림. 실제 export 클래스명을 보고 `map`을 맞출 것
 
 ### 1. CMP Facade 변환
 
@@ -198,19 +220,39 @@ uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/c
    이미지는 파일명으로 찾는다 (업로드 시 붙는 `8f3a2b1c-` 접두사는 무시). 취소된 annotation과 미라벨 task는 건너뛰고,
    annotation이 여러 개면 가장 최근 것을 쓴다.
 
+### 2-1. v2 라벨링 준비 (b04 장애물 프레임 150장, 3명 × 50장)
+
+```bash
+# v1 모델 대리 점수(건물 피복률 낮음 + 후처리 제거 창문)로 장애물이 많을 법한 프레임, 15개 시간 구간 × 10장, dHash로 유사 프레임 배제
+uv run --project cv python -m facade_cv.detect.datasets.label_studio.select_frames \
+    --video data/raw/videos/b04_shcool/b04_ground_01.MOV --out data/own/b04_obstacle
+# → data/own/b04_obstacle/raw/b04_ground_01__frame_<index>.jpg, selection.csv (점수·구간·batch·선택 사유)
+uv run --project cv python -m facade_cv.detect.datasets.label_studio.prelabel --weights cv/weights/seg_window_facade_v1.pt \
+    --images data/own/b04_obstacle/raw --out data/own/b04_obstacle/prelabel.json \
+    --selection data/own/b04_obstacle/selection.csv --url-prefix "/data/local-files/?d=raw/"
+# → prelabel_batch1.json, _batch2.json, _batch3.json (시간순 round-robin — 라벨러마다 영상 전 구간)
+```
+
+라벨링 규칙: [docs/labeling_guide.md](docs/labeling_guide.md). Labeling Interface는 6클래스 `labeling_config.xml`.
+
 ### 3. 병합·분할
 
 ```bash
 uv run --project cv python -m facade_cv.detect.datasets.merge_datasets \
-    --cmp data/yolo/cmp --own data/yolo/own --out data/yolo/merged   # --own 여러 번 가능, 재실행은 --overwrite
+    --cmp data/yolo/cmp --ext ade20k=data/yolo/ade20k --ext ttpla=data/yolo/ttpla \
+    --ext roboflow_building_facade=data/yolo/roboflow/building_facade \
+    --own data/yolo/own --out data/yolo/merged   # --ext/--own 여러 번 가능 (없는 --ext 디렉토리는 건너뜀), 재실행은 --overwrite
 ```
 
-- CMP: train 0.9 / val 0.1 / test 0 — test는 자체 데이터로만 평가
+- 공개 데이터(CMP 포함): train 0.9 / val 0.1 / **test 0 강제** — 시험셋은 자체 촬영만. 출력 파일명 `pub_<소스>__<원본>`
+- 장수 상한 `balance`: 공개 전체 ≤3,000 (ADE20K ≤1,500, TTPLA ≤200, Roboflow 합 ≤1,200, CMP 전체), 상한 안에서는 희귀 클래스 우선
+- 출력: `data.yaml`, `stats.json`(split·소스·클래스별 이미지/인스턴스 수), `sources.json`(소스 → [R번호]·라이선스·장수, 모델 카드용)
+- 자체 데이터 그룹 `split.own_group_by`: `flight`(영상 하나) / `segment`(기본 — 프레임 600개 구간, 다른 split 경계 ±60프레임 버림)
 - 자체 데이터: train 0.6 / val 0.2 / test 0.2, val·test에 최소 1그룹씩 보장 (그룹이 2개 미만이면 에러)
 - **그룹 단위 분할**: 같은 비행의 연속 프레임이 train/test로 나뉘면 성능이 부풀려진다.
   자체 이미지 파일명은 `<flightID>__<frame>.jpg`여야 하고 (`split.own_group_pattern`, `io.extract` 출력 그대로),
   아니면 에러로 중단한다. `--allow-ungrouped`로만 우회 (그 이미지는 혼자 한 그룹)
-- 출력 파일명은 `cmp__<원본>` / `<own 디렉토리명>__<원본>`, `data.yaml` 생성
+- 출력 파일명은 `pub_<소스>__<원본>` / `<own 디렉토리명>__<원본>` (구 zip의 `cmp__`도 노트북이 공개 데이터로 인식)
 
 ### 4. 학습 증강 정책 (config/augment.yaml)
 
@@ -232,6 +274,19 @@ YOLO("yolo11s-seg.pt").train(data="data/yolo/merged/data.yaml", **train_augment_
 
 대비·모션블러는 Ultralytics 하이퍼파라미터에 없어서 `augmentations` 인자(albumentations 객체)로 넘긴다.
 여기에는 픽셀 전용 변환만 둔다 — 기하 변환은 Ultralytics가 polygon과 함께 처리해야 라벨이 어긋나지 않는다.
+
+## 모델 비교 평가 (facade_cv.eval.compare)
+
+```bash
+uv run --project cv python -m facade_cv.eval.compare --data data/yolo/merged/data.yaml \
+    --weights cv/weights/seg_window_facade_v1.pt --weights cv/weights/seg_window_facade_v2.pt --out runs/eval
+```
+
+- 대상: data.yaml의 test split (= 자체 촬영만). 모델마다 라벨을 그 모델이 아는 클래스만 남긴 임시 복사본으로 Ultralytics val
+  → 2클래스 v1과 6클래스 v2를 같은 이미지로 비교 (창문 mask mAP50·mAP50-95, 클래스별 P/R/mAP)
+- 장애물 위 오검출: conf ≥ 0.4 창문 예측 중 GT 창문과 IoU < 0.5이고 GT door/vegetation/wire/pole과 예측 면적의 50% 이상 겹친 것
+  (`config/eval.yaml`). raw(모델 출력)와 post(후처리 후)를 장애물 클래스별로
+- 출력 `runs/eval/<날짜_시각>/metrics.json, table.md, grid.jpg`(모델별 예측을 나란히, 오검출 차이 큰 이미지 순). 표는 `cv/weights/MODEL_CARD.md`에도 append
 
 ## 목업 (fixtures/)
 

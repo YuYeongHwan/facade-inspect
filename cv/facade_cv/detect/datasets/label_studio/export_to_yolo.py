@@ -13,7 +13,7 @@ from urllib.parse import unquote
 import numpy as np
 import typer
 
-from facade_cv.config import load_config
+from facade_cv.config import class_names
 from facade_cv.detect.datasets.yolo import write_label
 
 FROM_NAME = "label"  # labeling_config.xml의 PolygonLabels name
@@ -47,14 +47,16 @@ def task_instances(task: dict, names: list[str]) -> list[tuple[int, np.ndarray]]
     return instances
 
 
-def export_to_yolo(export_json: str | Path, images_dir: str | Path, out: str | Path, cfg: dict | None = None) -> int:
-    """변환한 이미지 수를 반환. 이미지를 못 찾은 task는 경고 후 건너뜀."""
-    cfg = cfg or load_config("dataset")
+def export_to_yolo(
+    export_json: str | Path, images_dir: str | Path, out: str | Path, names: list[str] | None = None
+) -> int:
+    """변환한 이미지 수를 반환. 이미지를 못 찾은 task는 경고 후 건너뜀. names 기본: config/classes.yaml active."""
+    names = names or class_names()
     images_dir, out = Path(images_dir), Path(out)
     tasks = json.loads(Path(export_json).read_text(encoding="utf-8"))
     n, missing = 0, []
     for task in tasks:
-        instances = task_instances(task, cfg["names"])
+        instances = task_instances(task, names)
         if instances is None:
             continue
         img = find_image(task["data"]["image"], images_dir)
@@ -74,8 +76,9 @@ def main(
     export: Path = typer.Option(..., exists=True, dir_okay=False),
     images: Path = typer.Option(..., exists=True, file_okay=False),
     out: Path = typer.Option(...),
+    classes: str = typer.Option(None, help="v1 | v2 (config/classes.yaml, 기본 active)"),
 ) -> None:
-    print(f"{export_to_yolo(export, images, out)} images → {out}")
+    print(f"{export_to_yolo(export, images, out, class_names(classes))} images → {out}")
 
 
 if __name__ == "__main__":

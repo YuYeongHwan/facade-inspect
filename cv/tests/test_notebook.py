@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import yaml
 
-from facade_cv.config import CONFIG_DIR, load_config
+from facade_cv.config import CONFIG_DIR, class_names, load_config
 from facade_cv.detect.datasets.merge_datasets import merge
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / "notebooks" / "train_seg.ipynb"
@@ -45,10 +45,12 @@ def test_notebook_valid(nb):
 
 def test_params_match_repo_config(ns):
     assert ns["AUGMENT"] == yaml.safe_load((CONFIG_DIR / "augment.yaml").read_text())
-    assert ns["CLASSES"] == load_config("dataset")["names"]
+    assert ns["CLASSES"] == class_names("v2")
     assert ns["CLASSES"][ns["WINDOW_ID"]] == "window"
-    assert ns["STAGE1"]["model"] == "yolo11s-seg.pt" and ns["STAGE1"]["imgsz"] == 1024
-    assert ns["STAGE1"]["epochs"] == 100 and ns["STAGE1"]["patience"] > 0
+    assert ns["STAGE1"]["model"] == "yolo11s-seg.pt" and ns["STAGE1"]["imgsz"] == 640
+    assert 30 <= ns["STAGE1"]["epochs"] <= 40 and ns["STAGE1"]["patience"] > 0
+    assert ns["STAGE2"]["imgsz"] == 1024 and ns["STAGE2"]["epochs"] < ns["STAGE1"]["epochs"]
+    assert ns["WEIGHTS_NAME"] == "seg_window_facade_v2"
     assert ns["OWN_OVERSAMPLE"] == 3
     assert ns["STAGE1"]["batch"] == ns["STAGE2"]["batch"] == 0.7  # AutoBatch (GPU 메모리 70%)
     assert isinstance(ns["EVAL_BATCH"], int)  # val은 소수 batch 미지원
@@ -78,17 +80,40 @@ def test_make_stage_yamls(ns, merged):
     c = y["counts"]
     lines = {k: (merged / "lists" / f"{k}.txt").read_text().split() for k in c}
 
-    assert all(ns["is_cmp"](p) for k in ("stage1_train", "stage1_val") for p in lines[k])
-    own_train = [p for p in lines["stage2_train"] if not ns["is_cmp"](p)]
+    assert all(ns["is_public"](p) for k in ("stage1_train", "stage1_val") for p in lines[k])
+    own_train = [p for p in lines["stage2_train"] if not ns["is_public"](p)]
     assert len(own_train) == 3 * len(set(own_train)) > 0  # ×3 오버샘플링
     assert c["stage2_train"] == c["stage1_train"] + len(own_train)
-    assert lines["own_test"] and not any(ns["is_cmp"](p) for p in lines["own_test"])
-    assert any(not ns["is_cmp"](p) for p in lines["stage2_val"])
+    assert lines["own_test"] and not any(ns["is_public"](p) for p in lines["own_test"])
+    assert any(not ns["is_public"](p) for p in lines["stage2_val"])
     for p in (p for v in lines.values() for p in v):
         assert ns["label_of"](p).is_file()
 
     data = yaml.safe_load(y["stage2"].read_text())
-    assert data["names"] == {0: "window", 1: "facade"} and data["test"] == "lists/own_test.txt"
+    assert data["names"] == dict(enumerate(ns["CLASSES"])) and data["test"] == "lists/own_test.txt"
+
+
+def test_make_stage_yamls_stage2_public_sample(ns, merged):
+    """Stage2 train의 공개 이미지는 stage2_public_max장 표본, Stage1은 공개 전체."""
+    y = ns["make_stage_yamls"](merged, 3, ns["CLASSES"], stage2_public_max=5, seed=0)
+    lines = (merged / "lists" / "stage2_train.txt").read_text().split()
+    pub = [p for p in lines if ns["is_public"](p)]
+    assert len(pub) == len(set(pub)) == 5 and y["counts"]["stage1_train"] > 5
+    assert ns["is_public"]("pub_ade20k__ADE_train_1.jpg") and ns["is_public"]("cmp__cmp_b0001.jpg")  # 구 zip 호환
+    assert not ns["is_public"]("own__flightA__frame_000001.jpg")
+
+
+def test_estimate_hours_budget(ns):
+    """v1 실측(550장×100에폭@1024=2.1h)을 그대로 재현하고, 기본 설정이 상한 3,000장에서 Stage당 3시간 이내."""
+    sec = ns["SEC_PER_IMAGE_EPOCH_1024"]
+    assert ns["estimate_hours"](550, 100, 1024, sec) == pytest.approx(2.1)
+    assert ns["estimate_hours"](550, 100, 512, sec) == pytest.approx(2.1 / 4)
+    bal = load_config("dataset")["balance"]
+    s1 = ns["estimate_hours"](bal["max_total"], ns["STAGE1"]["epochs"], ns["STAGE1"]["imgsz"], sec)
+    own_train = 150 * 0.6  # 라벨링 150장 중 train
+    s2 = ns["estimate_hours"](ns["STAGE2_PUBLIC_MAX"] + own_train * ns["OWN_OVERSAMPLE"], ns["STAGE2"]["epochs"],
+                              ns["STAGE2"]["imgsz"], sec)
+    assert s1 <= ns["MAX_STAGE_HOURS"] and s2 <= ns["MAX_STAGE_HOURS"]
 
 
 def test_ultralytics_keeps_oversampled_duplicates(ns, merged):
@@ -130,7 +155,7 @@ def test_make_stage_yamls_stage1_only_with_own_zip(ns, merged):
 def test_make_stage_yamls_rejects_missing_cmp(ns, tmp_path):
     own = _yolo_dir(tmp_path / "own", [f"flight{g}__0" for g in "ABC"])
     merge(None, [own], tmp_path / "merged")
-    with pytest.raises(ValueError, match="CMP"):
+    with pytest.raises(ValueError, match="공개"):
         ns["make_stage_yamls"](tmp_path / "merged", 3, ns["CLASSES"])
 
 
@@ -160,37 +185,36 @@ def test_gt_count_and_label_of(ns, tmp_path):
     assert ns["gt_count"](lab, 0) == 2 and ns["gt_count"](tmp_path / "missing.txt", 0) == 0
 
 
-def test_next_version(ns, tmp_path):
-    assert ns["next_version"](tmp_path) == 1
-    for n in ("seg_window_facade_v1.pt", "seg_window_facade_v3.pt", "seg_window_facade_v2_old.pt", "other_v9.pt"):
-        (tmp_path / n).touch()
-    assert ns["next_version"](tmp_path) == 4
-
-
 def test_model_card_entry(ns):
-    ev = {"mask_P": 0.9, "mask_R": 0.8, "mask_mAP50": 0.75, "mask_mAP50-95": 0.5}
+    m = {"mask_P": 0.9, "mask_R": 0.8, "mask_mAP50": 0.75, "mask_mAP50-95": 0.5}
+    ev = {"window": m, "door": {**m, "mask_mAP50": 0.3}}
     cnt = ns["count_metrics"]([10, 20], [10, 18], 0.1)
+    src = {"cmp": {"ref": "R1", "license": "CC BY-SA 3.0", "images": 606}, "own": {"ref": "?", "license": "?", "images": 9}}
     entry = ns["model_card_entry"]({
         "name": "seg_window_facade_v2", "date": "2026-10-02", "file": "seg_window_facade_v2.pt", "dataset": "merged.zip",
         "counts": {"own_test": 7}, "stage1": ns["STAGE1"], "stage2": ns["STAGE2"], "oversample": 3,
         "augment": ns["AUGMENT"], "ultralytics": "8.4.171", "gpu": "T4", "seed": 0, "run": "r",
         "eval": {"stage1": ev, "stage2": ev}, "count": {"stage1": cnt, "stage2": cnt}, "count_conf": 0.4, "count_tol": 0.1,
-        "final_stage": "stage2", "eval_set": "자체 test", "eval_images": 7,
+        "final_stage": "stage2", "eval_set": "자체 test", "eval_images": 7, "sources": src, "classes": ns["CLASSES"],
+        "stage2_public_max": 1000,
     })
     assert entry.startswith("\n## seg_window_facade_v2 — 2026-10-02")
     assert "| stage2 | 0.7500 | 0.5000 | 1.00 | 5.0% | 100.0% |" in entry
     assert "평가: 자체 test 7장" in entry and "(stage2 best.pt)" in entry and "자체 train ×3" in entry
     assert ns["saved_marker"]("r", "stage2") in entry
+    assert "  - cmp: 606장 — [R1] CC BY-SA 3.0" in entry and "| stage2 | door | 0.3000 | 0.5000 |" in entry
+    assert "공개 표본 1000장" in entry
 
 
 def test_model_card_entry_stage1_only(ns):
-    ev = {"mask_P": 0.9, "mask_R": 0.8, "mask_mAP50": 0.75, "mask_mAP50-95": 0.5}
+    ev = {"window": {"mask_P": 0.9, "mask_R": 0.8, "mask_mAP50": 0.75, "mask_mAP50-95": 0.5}}
     entry = ns["model_card_entry"]({
         "name": "seg_window_facade_v1", "date": "d", "file": "f.pt", "dataset": "cmp_only.zip",
         "counts": {"stage1_train": 545, "stage1_val": 61}, "stage1": ns["STAGE1"], "stage2": ns["STAGE2"],
         "oversample": 3, "augment": ns["AUGMENT"], "ultralytics": "u", "gpu": "g", "seed": 0, "run": "r",
         "eval": {"stage1": ev}, "count": {"stage1": ns["count_metrics"]([1], [1], 0.1)}, "count_conf": 0.4,
-        "count_tol": 0.1, "final_stage": "stage1", "eval_set": "CMP val", "eval_images": 61,
+        "count_tol": 0.1, "final_stage": "stage1", "eval_set": "CMP val", "eval_images": 61, "sources": {},
+        "classes": ["window", "facade"], "stage2_public_max": 1000,
     })
     assert "(stage1 best.pt)" in entry and "Stage2: 없음 (STAGE1_ONLY" in entry
     assert "평가: CMP val 61장" in entry and "| stage1 |" in entry and "| stage2 |" not in entry

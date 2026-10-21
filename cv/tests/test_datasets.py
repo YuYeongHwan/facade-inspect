@@ -6,7 +6,7 @@ import pytest
 import yaml
 from PIL import Image
 
-from facade_cv.config import load_config
+from facade_cv.config import class_names, load_config
 from facade_cv.detect.augment import train_augment_args
 from facade_cv.detect.datasets.cmp_convert import convert_cmp
 from facade_cv.detect.datasets.label_studio.export_to_yolo import export_to_yolo
@@ -224,7 +224,7 @@ def test_merge_splits(tmp_path):
         assert imgs == {p.stem for p in (out / "labels" / s).iterdir()}
 
     data = yaml.safe_load((out / "data.yaml").read_text())
-    assert data["names"] == {0: "window", 1: "facade"}
+    assert data["names"] == dict(enumerate(class_names()))
     assert (out / data["val"]).is_dir()
 
     with pytest.raises(FileExistsError):
@@ -269,7 +269,7 @@ def test_merge_validates_before_overwrite(tmp_path):
 
 def test_cmp_min_area_per_class(tmp_path):
     cfg = load_config("dataset")
-    cfg["min_area_ratio"] = {"window": 0.001, "facade": 0.01}  # 8px / 80px (100×80 이미지)
+    cfg["min_area_ratio"] |= {"window": 0.001, "facade": 0.01}  # 8px / 80px (100×80 이미지)
     lab = np.full((H, W), 1, np.uint8)
     lab[10:70, 10:60] = 2
     lab[20:24, 20:24] = 3  # 16px 창문 → 유지

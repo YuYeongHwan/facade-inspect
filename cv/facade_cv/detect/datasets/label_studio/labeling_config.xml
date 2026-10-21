@@ -1,8 +1,13 @@
-<!-- Label Studio labeling config: 창문/외벽 polygon. name="label"/"image"는 export_to_yolo.py, prelabel.py와 일치해야 함 -->
+<!-- Label Studio labeling config: v2 6클래스 polygon (config/classes.yaml). name="label"/"image"는 export_to_yolo.py, prelabel.py와
+     일치해야 함. 무엇을 그리는지는 docs/labeling_guide.md. 색은 facade_cv/detect/segmenter.py CLASS_COLORS와 같음 -->
 <View>
   <Image name="image" value="$image" zoom="true" zoomControl="true" rotateControl="false"/>
   <PolygonLabels name="label" toName="image" strokeWidth="2" pointSize="small" opacity="0.4">
-    <Label value="window" background="#1f77b4"/>
-    <Label value="facade" background="#ff7f0e"/>
+    <Label value="window" background="#283cdc" hotkey="1"/>
+    <Label value="facade" background="#00c8c8" hotkey="2"/>
+    <Label value="vegetation" background="#28b428" hotkey="3"/>
+    <Label value="wire" background="#ff00ff" hotkey="4"/>
+    <Label value="pole" background="#8c5a32" hotkey="5"/>
+    <Label value="door" background="#ff8c00" hotkey="6"/>
   </PolygonLabels>
 </View>

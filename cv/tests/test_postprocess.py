@@ -146,3 +146,44 @@ def test_sparse_grid_skips_empty_cells(scene):
     assert res.empty_cells == [] and res.fill_candidates == [] and len(res.windows) == len(stairs)
     assert any(w.startswith("grid_unreliable") for w in res.warnings)
     assert {(w.row, w.col) for w in res.windows} == set(stairs)
+
+
+def _obstacle(cls, mask, conf=0.9):
+    ys, xs = np.nonzero(mask)
+    return Detection(cls, mask, np.empty((0, 2), np.float32), (xs.min(), ys.min(), xs.max(), ys.max()), conf)
+
+
+def test_window_on_door_removed(scene):
+    """출입문 유리를 창으로 잡은 경우: 창 마스크가 door 마스크와 겹침 ≥ remove_overlap → 제거 (on_door)."""
+    img, wins, facade, _ = scene
+    door = _obstacle("door", wins[0, 0].mask.copy())
+    res = postprocess(img, [*wins.values(), facade, door])
+    assert [w.reason for w in res.removed] == ["on_door"]
+    assert len(res.windows) == len(wins) - 1 and res.to_dict()["obstacles"] == ["door"]
+
+
+def test_partly_occluded_window_kept_with_occlusion(scene):
+    """나무가 창 일부(~30%)를 가림: 창은 남고 occlusion polygon + occluded_ratio가 결과에 들어간다."""
+    img, wins, facade, _ = scene
+    m = wins[1, 1].mask
+    ys, xs = np.nonzero(m)
+    tree = np.zeros_like(m)
+    cut = xs.min() + int(0.3 * (xs.max() - xs.min()))
+    tree[ys.min() - 20:ys.max() + 20, xs.min() - 40:cut] = True  # 창 왼쪽 30% + 창 밖
+    res = postprocess(img, [*wins.values(), facade, _obstacle("vegetation", tree)])
+    assert not res.removed
+    w = _by_cell(res)[1, 1]
+    assert 0.2 < w.occluded_ratio < 0.4 and w.occlusion
+    d = w.to_dict()
+    assert d["occluded_ratio"] == pytest.approx(w.occluded_ratio, abs=1e-4) and len(d["occlusion"][0]) >= 3
+    others = [x for rc, x in _by_cell(res).items() if rc != (1, 1)]
+    assert all(x.occluded_ratio == 0 and "occlusion" not in x.to_dict() for x in others)
+
+
+def test_v1_without_obstacles_unchanged(scene):
+    """v1 가중치(장애물 클래스 없음) = 장애물 검출 없음 → 기존 출력 형식 그대로. 저신뢰 장애물도 무시."""
+    img, wins, facade, _ = scene
+    base = postprocess(img, [*wins.values(), facade]).to_dict()
+    low = _obstacle("door", wins[0, 0].mask.copy(), conf=load_config("detect")["obstacles"]["conf"] / 2)
+    assert postprocess(img, [*wins.values(), facade, low]).to_dict() == base
+    assert base["obstacles"] == [] and all("occlusion" not in w for w in base["windows"])

@@ -30,3 +30,11 @@ def write_label(path: Path, instances: list[tuple[int, np.ndarray]]) -> None:
 
 def list_images(images_dir: Path) -> list[Path]:
     return sorted(p for p in Path(images_dir).iterdir() if p.suffix.lower() in IMAGE_EXTS)
+
+
+def source_missing(src: Path, guide: str) -> bool:
+    """공개 데이터 폴더가 없거나 비었으면 다운로드 안내를 출력하고 True (변환기는 건너뛴다 — 에러 아님)."""
+    if Path(src).is_dir() and any(Path(src).iterdir()):
+        return False
+    print(f"skip: {src} 없음 — 사람이 받아 둬야 한다.\n{guide}")
+    return True

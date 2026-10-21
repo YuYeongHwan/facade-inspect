@@ -9,12 +9,13 @@ import numpy as np
 from facade_cv.config import CONFIG_DIR, load_config
 from facade_cv.device import get_device
 
-CLASS_COLORS = {"window": (220, 60, 40), "facade": (200, 200, 0)}  # BGR
+CLASS_COLORS = {"window": (220, 60, 40), "facade": (200, 200, 0), "vegetation": (40, 180, 40), "wire": (255, 0, 255),
+                "pole": (50, 90, 140), "door": (0, 140, 255)}  # BGR, label_studio/labeling_config.xml과 같은 색
 
 
 @dataclass
 class Detection:
-    cls: str  # "window" | "facade"
+    cls: str  # config/classes.yaml 이름 (window, facade, vegetation, wire, pole, door)
     mask: np.ndarray  # bool (H, W), 원본 이미지 크기
     polygon: np.ndarray  # (N, 2) float32 픽셀
     bbox: tuple[float, float, float, float]  # x0, y0, x1, y1

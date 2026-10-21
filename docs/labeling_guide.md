@@ -1,7 +1,7 @@
 # 라벨링 가이드 — v2 6클래스 (Label Studio)
 
-대상: `data/own/b04_obstacle/raw/` 150장 (`select_frames`로 고름, 근거는 `selection.csv`). 3명이 50장씩
-(`prelabel_batch1~3.json`). 창문·외벽은 v1 모델이 미리 그려 둔 것을 **고치고**, 장애물 4클래스는 **새로 그린다**.
+대상: `data/own/b04_obstacle/raw/` 150장 (`select_frames`로 고름, 근거는 `selection.csv`). 2명이 75장씩
+(`prelabel_batch1~2.json`). 창문·외벽은 v1 모델이 미리 그려 둔 것을 **고치고**, 장애물 4클래스는 **새로 그린다**.
 Labeling Interface: `cv/facade_cv/detect/datasets/label_studio/labeling_config.xml` (단축키 1~6).
 
 ## 공통 규칙
@@ -39,7 +39,7 @@ Labeling Interface: `cv/facade_cv/detect/datasets/label_studio/labeling_config.x
 | 사람·차 | 그리지 않음 (배경) | v2 범위 밖 |
 
 ## 작업 순서 (1명 기준)
-1. Label Studio에서 자기 batch 프로젝트 열기 (task 50개, 예측 polygon이 보임)
+1. Label Studio에서 자기 batch 프로젝트 열기 (task 75개, 예측 polygon이 보임)
 2. 예측 window/facade 확인 → 틀린 것 삭제·수정, 빠진 것 추가 (출입문 위에 그려진 window는 door로 라벨 변경)
 3. vegetation → wire → pole → door 순으로 새로 그리기
 4. Submit. 한 장 평균 4~6분 예상 (전선이 많은 장은 더)

@@ -30,9 +30,9 @@ uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/c
 uv run --project cv python -m facade_cv.detect.datasets.ade20k_convert     # data/external/ade20k → data/yolo/ade20k
 uv run --project cv python -m facade_cv.detect.datasets.ttpla_convert      # data/external/ttpla → data/yolo/ttpla
 uv run --project cv python -m facade_cv.detect.datasets.roboflow_convert   # data/external/roboflow/<키> → data/yolo/roboflow/<키>
-# 자체 (Label Studio JSON export, 라벨러 3명 export를 각각 변환해 같은 폴더로)
+# 자체 (Label Studio JSON export, 라벨러 2명 export를 각각 변환해 같은 폴더로)
 uv run --project cv python -m facade_cv.detect.datasets.label_studio.export_to_yolo \
-    --export export_batch1.json --images data/own/b04_obstacle/raw --out data/yolo/own   # batch2, 3도 같은 --out
+    --export export_batch1.json --images data/own/b04_obstacle/raw --out data/yolo/own   # batch2도 같은 --out
 
 # 병합 (균형 상한·분할) → zip
 uv run --project cv python -m facade_cv.detect.datasets.merge_datasets --out data/yolo/merged_v2 \

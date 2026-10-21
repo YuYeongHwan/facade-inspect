@@ -221,7 +221,7 @@ uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/c
    이미지는 파일명으로 찾는다 (업로드 시 붙는 `8f3a2b1c-` 접두사는 무시). 취소된 annotation과 미라벨 task는 건너뛰고,
    annotation이 여러 개면 가장 최근 것을 쓴다.
 
-### 2-1. v2 라벨링 준비 (b04 장애물 프레임 150장, 3명 × 50장)
+### 2-1. v2 라벨링 준비 (b04 장애물 프레임 150장, 2명 × 75장)
 
 ```bash
 # v1 모델 대리 점수(건물 피복률 낮음 + 후처리 제거 창문)로 장애물이 많을 법한 프레임, 15개 시간 구간 × 10장, dHash로 유사 프레임 배제
@@ -231,7 +231,7 @@ uv run --project cv python -m facade_cv.detect.datasets.label_studio.select_fram
 uv run --project cv python -m facade_cv.detect.datasets.label_studio.prelabel --weights cv/weights/seg_window_facade_v1.pt \
     --images data/own/b04_obstacle/raw --out data/own/b04_obstacle/prelabel.json \
     --selection data/own/b04_obstacle/selection.csv --url-prefix "/data/local-files/?d=raw/"
-# → prelabel_batch1.json, _batch2.json, _batch3.json (시간순 round-robin — 라벨러마다 영상 전 구간)
+# → prelabel_batch1.json, _batch2.json (시간순 round-robin — 라벨러마다 영상 전 구간)
 ```
 
 라벨링 규칙: [docs/labeling_guide.md](docs/labeling_guide.md). Labeling Interface는 6클래스 `labeling_config.xml`.

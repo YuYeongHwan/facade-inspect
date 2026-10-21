@@ -99,4 +99,4 @@ select:                   # 라벨링 프레임 선택 (label_studio.select_fram
   bins: 15                # 영상을 이 개수 시간 구간으로 나눠 구간마다 count/bins장
   dhash_min_dist: 10      # 64bit dHash 해밍거리가 이보다 가까운 프레임은 이미 고른 것과 비슷 → 건너뜀
   removed_weight: 0.05    # 점수 = (1 - v1 window∪facade 피복률) + 제거된 창문 수 × 이 값
-  batches: 3              # 라벨러 수
+  batches: 2              # 라벨러 수

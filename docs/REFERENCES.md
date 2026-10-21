@@ -53,6 +53,18 @@ Roboflow Universe(https://universe.roboflow.com)에 사용자가 올린 데이�
   — https://universe.roboflow.com/mzworkspace-segj7/window-segment-main (window)
 - 사용 부분: v2 학습 데이터 창문 보강 (`cv/facade_cv/detect/datasets/roboflow_convert.py`, `config/dataset.yaml` roboflow)
 
+### [R26]~[R28] Roboflow Universe 오염 창문 데이터셋
+Roboflow Universe 사용자 업로드 데이터셋 (저자 이름 없음 — "Provided by a Roboflow user"). 서지는 각 export의
+`README.roboflow.txt`·`data.yaml` 기준. 라이선스 CC BY 4.0 (출처 표시 필요). **학습에는 쓰지 않고** T7 오염 분석
+검증·CSI 보정 평가 이미지로만 쓴다 (`data/eval/t7_dev.csv`, `data/eval/csi_calib.csv`). 세부는 data/DATASETS.md
+- [R26] dirty window — workspace `project-novx2`, v1 (2026-02-09), export 2026-05-25, 366장, YOLOv11 polygon,
+  클래스 `dirty window` 1개, 전처리·증강 없음 — https://universe.roboflow.com/project-novx2/dirty-window
+- [R27] window check — workspace `dirty-window`, v3 (2026-05-23), export 2026-10-21, 865장, YOLOv11 box,
+  클래스 dirt·glare·stain·wet_glass, 640×640 stretch 리사이즈, 원본당 3배 증강(좌우 반전, 밝기 ±25%, 블러 0~2px,
+  소금·후추 잡음 5%) — https://universe.roboflow.com/dirty-window/window-check
+- [R28] window check2 — workspace `dirty-window`, v2 (2026-05-23), export 2026-10-21, 263장, YOLOv11 box,
+  클래스·전처리·증강은 [R27]과 같음 — https://universe.roboflow.com/dirty-window/window-check2
+
 ## 오염 점수·청소 우선순위
 
 ### [R2] Gaspar & de Brito — 외벽 열화 심각도 지수 (Severity of degradation)

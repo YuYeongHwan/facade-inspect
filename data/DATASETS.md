@@ -14,6 +14,10 @@
 | Roboflow building-facade-segmentation-instance v4 | Roboflow Universe `building-facade` [R21-a] | CC BY 4.0 | 2,226 | Roboflow 합계 ≤1,200 (v2) — 다운로드 후 갱신 | `data/external/roboflow/building_facade` |
 | Roboflow Facade_test | Roboflow Universe `ir-2znee` [R21-b] | CC BY 4.0 | 382 | 〃 | `data/external/roboflow/facade_test` |
 | Roboflow window-segment-main | Roboflow Universe `mzworkspace-segj7` [R21-c] | CC BY 4.0 | [확인 필요] | 〃 | `data/external/roboflow/window_segment` |
+| Roboflow dirty window v1 | Roboflow Universe `project-novx2` [R26] <br> https://universe.roboflow.com/project-novx2/dirty-window | CC BY 4.0 | 366 (train 254 / valid 112), 장면 366 | t7_dev 2 + csi_calib 25 (**평가만, 학습 미사용**) | `data/public/dirty_windows/dirty-window` |
+| Roboflow window check v3 | Roboflow Universe `dirty-window` [R27] <br> https://universe.roboflow.com/dirty-window/window-check | CC BY 4.0 | 865 (train 798 / valid 67), 고유 장면 ≈53 | t7_dev 16 + csi_calib 16 (평가만) | `data/public/dirty_windows/window-check` |
+| Roboflow window check2 v2 | Roboflow Universe `dirty-window` [R28] <br> https://universe.roboflow.com/dirty-window/window-check2 | CC BY 4.0 | 263 (train 243 / valid 20), 고유 장면 ≈45 | t7_dev 7 + csi_calib 4 (평가만) | `data/public/dirty_windows/window-check2` |
+| 오염 창문 근접 사진 (자체 촬영, **예정**) | 직접 촬영 10~20장 | 자체 소유 | — | T7 검증·CSI 보정 (예정) | `data/own/dirty_windows/` |
 | b01_songsan (자체 촬영) | 2026-10-07, 지상 정지 촬영, 맑음 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b01_songsan` |
 | b02_smilen (자체 촬영) | 2026-10-07, 지상, 올려다보는 각도 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b02_smilen` |
 | b03_shopglass (자체 촬영) | 2026-10-07, 근접, 반사 심함·오염 있음 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b03_shopglass` |
@@ -82,3 +86,34 @@ ADE20K·Roboflow semantic 원본의 인스턴스 = 클래스 마스크의 **연�
 
 공통: 이미지 면적 대비 window < 0.0001, facade < 0.0005인 인스턴스는 버림. polygon 단순화 approxPolyDP eps 0.005 (윤곽 길이 대비).
 CMP에서 창문이 빠지는 경우: PNG에서 balcony/deco/shop에 완전히 가려진 창문 (예: `cmp_x0173`).
+
+## 오염 창문 평가 데이터 (T7 검증·CSI 보정, 학습 미사용)
+
+[R26]~[R28] Roboflow 3개. 형식 YOLOv11 (`{train,valid}/{images,labels}`, test split 없음). 라벨 없는 이미지 0장.
+**학습에는 쓰지 않는다** — 오염 분석(T7)이 맞게 동작하는지 보는 개발 세트와, CSI 기준값을 사람 평가에 맞추는 보정 세트로만 쓴다.
+
+| | dirty window [R26] | window check [R27] | window check2 [R28] |
+|---|---|---|---|
+| 장수 (train / valid) | 254 / 112 | 798 / 67 | 243 / 20 |
+| 고유 장면 | 366 | ≈53 | ≈45 |
+| 클래스 (인스턴스 수) | dirty window 4,492 | stain 733, glare 506, dirt 252, wet_glass 197 | glare 463, stain 144, dirt 63, wet_glass 7 |
+| 라벨 형식 | polygon (중앙값 34점, 장당 ≈12개) | box | box |
+| 해상도 | 원본 그대로 (93종, 810×1080·960×1280 최다) | 전부 640×640 (stretch) | 전부 640×640 (stretch) |
+| 시점 (육안, 대략) | 실내에서 본 창 1~2개 ≈90%, 유리 근접 ≈10%, 외벽 원거리 0 | 유리 표면 근접 ≈85%, 실내에서 본 창 ≈15%, 외벽 0 | 커튼월 외관(원거리) ≈65%, 근접 ≈35% |
+
+- **dirty window의 polygon은 오염 얼룩이 아니라 "더러운 창(유리+창틀+창턱) 영역 전체"**다. 창턱·우편함 같은
+  유리 밖 표면도 칠해져 있다 → 오염 위치·면적 정답으로 쓸 수 없고, 창 단위 오염 정도(사람 평가)용 이미지로만 쓴다
+- window check 계열의 box는 오염 종류별 영역이지만 이미지 전체를 덮는 box가 많다 (dirt+stain 합집합 면적 > 0.95인 장면 ≈25개).
+  glare(반사)·wet_glass(물기)는 오염이 아니다 → T7이 이것을 오염으로 잡지 않는지 확인하는 용도
+- **중복 주의**: window check 계열은 업로드 전에 이미 증강한 사본(`aug_<원본>_<번호>`, `glare_aug_...`)이 있고,
+  Roboflow export가 원본마다 3배 증강(`.rf.<해시>`)을 다시 만든다. 두 데이터셋 사이에도 같은 사진이 있다 (예: "WASH ME").
+  장면은 파일명 정규화(`.rf.`·`aug_`·`glare_`·끝 번호 제거) + 256비트 dHash(좌우 반전 포함, 해밍 ≤ 20) + 육안으로 묶었고,
+  장면마다 1장만 고른다 (valid = 증강 없는 원본 우선). train과 valid에 같은 장면이 있다 — 원래 split은 쓰지 않는다
+- 선택 목록 (이미지 복사 없음, 경로만):
+  - `data/eval/t7_dev.csv` 30장 — dirt 5, stain 5, 넓은 면적 심한 오염 5, glare 5, wet_glass 5, 깨끗한 창 5 (CMP 3, b04 2)
+  - `data/eval/csi_calib.csv` 60장 (t7_dev와 겹치지 않음) — 공개 45 + 깨끗/약간 15 (CMP 8, b04 7), split fit 40 / holdout 20
+    - `est_grade` 0~4 = 이미지 고를 때 쓴 **임시 추정** 오염 정도 (0 깨끗/오염 없음 ~ 4 매우 넓음). window check 계열은
+      dirt+stain box 합집합 면적 구간, dirty window는 한 사람의 육안(1 약함·2 중간·4 심함), CMP·b04는 0.
+      고르게 분포시키려고 붙인 값일 뿐이다 → **사람 3명의 평가로 대체 예정, 보정 정답으로 사용 금지**
+      (보정 정답은 `contamination/calibrate.py rate`로 모은 평가의 합의값)
+- 직접 촬영 오염 창문 사진 10~20장 **예정**: `data/own/dirty_windows/` (공개 데이터에 부족한 국소 dirt·새똥·물때·외부 시점)

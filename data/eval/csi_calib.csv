@@ -1,0 +1,61 @@
+path,source,label_type,classes,note,est_grade,split
+data/own/b04_obstacle/raw/b04_ground_01__frame_001515.jpg,b04,없음(v1 prelabel만),-,"깨끗~약간(육안, 반사); frame 1515 (t7 프레임·서로 15초 이상 떨어짐); 창 crop 필요",0,fit
+data/own/b04_obstacle/raw/b04_ground_01__frame_002835.jpg,b04,없음(v1 prelabel만),-,"깨끗~약간(육안, 반사); frame 2835 (t7 프레임·서로 15초 이상 떨어짐); 창 crop 필요",0,holdout
+data/own/b04_obstacle/raw/b04_ground_01__frame_003465.jpg,b04,없음(v1 prelabel만),-,"깨끗~약간(육안, 반사); frame 3465 (t7 프레임·서로 15초 이상 떨어짐); 창 crop 필요",0,fit
+data/own/b04_obstacle/raw/b04_ground_01__frame_006045.jpg,b04,없음(v1 prelabel만),-,"깨끗~약간(육안, 반사); frame 6045 (t7 프레임·서로 15초 이상 떨어짐); 창 crop 필요",0,fit
+data/own/b04_obstacle/raw/b04_ground_01__frame_006465.jpg,b04,없음(v1 prelabel만),-,"깨끗~약간(육안, 반사); frame 6465 (t7 프레임·서로 15초 이상 떨어짐); 창 crop 필요",0,holdout
+data/own/b04_obstacle/raw/b04_ground_01__frame_007245.jpg,b04,없음(v1 prelabel만),-,"깨끗~약간(육안, 반사); frame 7245 (t7 프레임·서로 15초 이상 떨어짐); 창 crop 필요",0,fit
+data/own/b04_obstacle/raw/b04_ground_01__frame_008325.jpg,b04,없음(v1 prelabel만),-,"깨끗~약간(육안, 반사); frame 8325 (t7 프레임·서로 15초 이상 떨어짐); 창 crop 필요",0,fit
+data/cmp/base/cmp_b0109.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,holdout
+data/cmp/base/cmp_b0121.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,fit
+data/cmp/base/cmp_b0126.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,fit
+data/cmp/base/cmp_b0164.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,holdout
+data/cmp/base/cmp_b0192.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,fit
+data/cmp/base/cmp_b0193.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,fit
+data/cmp/base/cmp_b0247.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,holdout
+data/cmp/base/cmp_b0376.jpg,cmp,CMP 사각(xml),window(외벽 라벨),"깨끗(육안); 외벽 전체, 창 crop 필요",0,fit
+data/public/dirty_windows/window-check/valid/images/glare_What-Makes-My-Windows-So-Dirty-After-It-Rains-1024x576_0_jpg.rf.2570257ef58e95f1a84d8da3f9bfbe83.jpg,window-check,box,glare/wet_glass,"면적 단계 0: 오염 없음(glare/wet만); 박스 합집합 면적 glare=0.184, wet_glass=1.0; 원본(valid); 같은 장면 88장 중 대표",0,fit
+data/public/dirty_windows/window-check2/valid/images/1000_F_219143351_FC6BiyW8l35Wl26EKLc4HfmtaLhxqQXw_jpg.rf.294df66519ed4fd23108a0e12d437d43.jpg,window-check2,box,glare,면적 단계 0: 오염 없음(glare/wet만); 박스 합집합 면적 glare=0.148; 원본(valid); 같은 장면 1장 중 대표,0,holdout
+data/public/dirty_windows/window-check2/valid/images/glare_1429458342-rps2015041-o_2_jpg.rf.b26fe889a1ad9414ffe919bdca9cb23f.jpg,window-check2,box,glare,면적 단계 0: 오염 없음(glare/wet만); 박스 합집합 면적 glare=0.287; 원본(valid); 같은 장면 5장 중 대표,0,fit
+data/public/dirty_windows/window-check2/valid/images/images_jpg.rf.245be2a5993ea860ef69dfac99b44e04.jpg,window-check2,box,glare,면적 단계 0: 오염 없음(glare/wet만); 박스 합집합 면적 glare=0.11; 원본(valid); 같은 장면 16장 중 대표,0,fit
+data/public/dirty_windows/dirty-window/train/images/22249_jpg.rf.573a84b67e424fe9ddb655ed4b5d82ac.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,holdout
+data/public/dirty_windows/dirty-window/train/images/22360_jpg.rf.3e4feb18fe99946f1757aa4c815a0073.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,fit
+data/public/dirty_windows/dirty-window/train/images/22387_jpg.rf.a917e78298f0f5ea6153721d606dcdd3.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,fit
+data/public/dirty_windows/dirty-window/train/images/22421_jpg.rf.f2dd1cb65739517b695d9a084d583eda.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,holdout
+data/public/dirty_windows/dirty-window/train/images/22467_jpg.rf.43bcf89c5666c021ee76c655db1ba998.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,fit
+data/public/dirty_windows/dirty-window/train/images/22506_jpg.rf.51bbb9efd36ed330c49a091a88ab1b0e.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,fit
+data/public/dirty_windows/dirty-window/valid/images/22239_jpg.rf.46d037248ce4a420d2ad12a6e476136b.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,holdout
+data/public/dirty_windows/dirty-window/valid/images/22271_jpg.rf.b33dba490d89458c65685bdd7d4fb6ee.jpg,dirty-window,polygon,dirty window,육안 약함; 실내에서 본 창 전체; polygon=창 전체,1,fit
+data/public/dirty_windows/window-check/valid/images/aug_360_F_1877004502_KlndIbiGV9pvArBKQGrb086hlLSECuKn_0_jpg.rf.3a2f2372bc4293ac77086bfa770ce341.jpg,window-check,box,glare/stain,"면적 단계 1: 약함 (dirt+stain 면적 ≤0.3); 박스 합집합 면적 glare=0.125, stain=0.299; 원본(valid); 같은 장면 20장 중 대표",1,fit
+data/public/dirty_windows/dirty-window/train/images/22178_jpg.rf.0d790585017740e94fa2cebc6955655c.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,holdout
+data/public/dirty_windows/dirty-window/train/images/22231_jpg.rf.e5082d7e0a3b3e64ff0e85d7c3395f1c.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,fit
+data/public/dirty_windows/dirty-window/train/images/22363_jpg.rf.c5e5210297d2bab793ae96f5ff5c8b6a.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,fit
+data/public/dirty_windows/dirty-window/train/images/22391_jpg.rf.b59389399fe7e7335c7065cdaa63c5f6.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,holdout
+data/public/dirty_windows/dirty-window/valid/images/22238_jpg.rf.9873d4d68f62ee4286245ba8724df3d9.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,fit
+data/public/dirty_windows/dirty-window/valid/images/22383_jpg.rf.7607e3f2f7f1db0de2907d20a0575a7f.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,fit
+data/public/dirty_windows/dirty-window/valid/images/22418_jpg.rf.7760929338b4f5f2d74fe97a3be76199.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,holdout
+data/public/dirty_windows/dirty-window/valid/images/22525_jpg.rf.e3f14e93afb499e43b154bb57339c387.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,fit
+data/public/dirty_windows/dirty-window/valid/images/22535_jpg.rf.bb04b03c141955c68520d4163f01dc36.jpg,dirty-window,polygon,dirty window,육안 중간; 실내에서 본 창 전체; polygon=창 전체,2,fit
+data/public/dirty_windows/window-check/train/images/blurry-view-window-transitions-to-clear-vibrant-view-trees-blue-sky-symbolizing-vision-correction-401506110_webp.rf.1308db4308d4dfa885b0c5ffbf1202d8.jpg,window-check,box,stain,면적 단계 2: 중간 (0.3~0.7); 박스 합집합 면적 stain=0.492; 증강본(잡음·블러·반전); 같은 장면 3장 중 대표,2,holdout
+data/public/dirty_windows/window-check/valid/images/aug_695095529_10162472669317466_485886585714925614_n_5_jpg.rf.9ffe776e8f8d78ba82b1f6a5b89e4a47.jpg,window-check,box,glare/stain,"면적 단계 2: 중간 (0.3~0.7); 박스 합집합 면적 glare=0.217, stain=0.397; 원본(valid); 같은 장면 21장 중 대표",2,fit
+data/public/dirty_windows/window-check/valid/images/aug_istockphoto-951960790-612x612_1_jpg.rf.81f96e5dc59839fb4a845d7b3297b80e.jpg,window-check,box,glare/stain,"면적 단계 2: 중간 (0.3~0.7); 박스 합집합 면적 stain=0.619, glare=0.163; 원본(valid); 같은 장면 13장 중 대표",2,fit
+data/public/dirty_windows/window-check2/valid/images/glare_aug_360_F_1088418738_VGv1upFKfe7XzU4wySMD1xKoua1wp7nA_5_2_jpg.rf.de18aa4d1c06d50cc024f59279230f0e.jpg,window-check2,box,glare/stain,"면적 단계 2: 중간 (0.3~0.7); 박스 합집합 면적 glare=0.141, stain=0.668; 원본(valid); 같은 장면 21장 중 대표",2,holdout
+data/public/dirty_windows/window-check/train/images/207113749_jpg.rf.a6a1d841e13219e292b96a927b5d4996.jpg,window-check,box,stain,면적 단계 3: 넓음 (0.7~0.95); 박스 합집합 면적 stain=0.914; 증강본(잡음·블러·반전); 같은 장면 12장 중 대표,3,fit
+data/public/dirty_windows/window-check/valid/images/aug_60f60b5c098f748dd61e8fab_dirtywindow_5_jpg.rf.55be443e6ab88f329a3d47c1b0b044cb.jpg,window-check,box,stain,면적 단계 3: 넓음 (0.7~0.95); 박스 합집합 면적 stain=0.884; 원본(valid); 같은 장면 14장 중 대표,3,fit
+data/public/dirty_windows/window-check/valid/images/aug_dIKelDxTU0W2xRBgHovL0TZP6nycCqQO3XFUHxvh_6_jpg.rf.e8486cc8cd3850f6fcde7a8727352019.jpg,window-check,box,stain,면적 단계 3: 넓음 (0.7~0.95); 박스 합집합 면적 stain=0.907; 원본(valid); 같은 장면 22장 중 대표,3,holdout
+data/public/dirty_windows/window-check/valid/images/aug_images-4-_4_jpg.rf.ab6b8a990863f8f0f4fbf5774f5b6564.jpg,window-check,box,stain,면적 단계 3: 넓음 (0.7~0.95); 박스 합집합 면적 stain=0.781; 원본(valid); 같은 장면 39장 중 대표,3,fit
+data/public/dirty_windows/window-check/valid/images/dusty-on-the-glass-of-window-texture-dirty-background-photo_jpg.rf.61095a24405b8410beaa3b42624a8233.jpg,window-check,box,stain,면적 단계 3: 넓음 (0.7~0.95); 박스 합집합 면적 stain=0.758; 원본(valid); 같은 장면 11장 중 대표,3,fit
+data/public/dirty_windows/window-check/valid/images/holiday-inn-suites-makati_jpg.rf.d1574cbefc609754c8ebd90ffadb873c.jpg,window-check,box,stain,면적 단계 3: 넓음 (0.7~0.95); 박스 합집합 면적 stain=0.792; 원본(valid); 같은 장면 22장 중 대표,3,holdout
+data/public/dirty_windows/dirty-window/train/images/22173_jpg.rf.7abc74d334458e9f90b1e51c23d1e7f7.jpg,dirty-window,polygon,dirty window,육안 심함; 실내에서 본 창 전체; polygon=창 전체,4,fit
+data/public/dirty_windows/dirty-window/train/images/22177_jpg.rf.3ef82252c68ced349f4ec93222c4ab0c.jpg,dirty-window,polygon,dirty window,육안 심함; 실내에서 본 창 전체; polygon=창 전체,4,fit
+data/public/dirty_windows/dirty-window/train/images/22218_jpg.rf.67cb6f5791e5ac2ef28a1de9bf73eb79.jpg,dirty-window,polygon,dirty window,육안 심함; 실내에서 본 창 전체; polygon=창 전체,4,holdout
+data/public/dirty_windows/dirty-window/train/images/22304_jpg.rf.3d3b6364a07ec4d98b148997333c3533.jpg,dirty-window,polygon,dirty window,육안 심함; 실내에서 본 창 전체; polygon=창 전체,4,fit
+data/public/dirty_windows/dirty-window/train/images/22344_jpg.rf.53dcf46e1fc4617c820b8a17954c5e24.jpg,dirty-window,polygon,dirty window,육안 심함; 실내에서 본 창 전체; polygon=창 전체,4,fit
+data/public/dirty_windows/dirty-window/train/images/22533_jpg.rf.86082fd692319b48fd1a23443f7f7cea.jpg,dirty-window,polygon,dirty window,육안 심함; 실내에서 본 창 전체; polygon=창 전체,4,holdout
+data/public/dirty_windows/dirty-window/valid/images/22343_jpg.rf.c4144e34dae4d7b6f5046a63aa3706db.jpg,dirty-window,polygon,dirty window,육안 심함; 실내에서 본 창 전체; polygon=창 전체,4,fit
+data/public/dirty_windows/dirty-window/valid/images/22399_jpg.rf.ae9eaab48ec9d9fbca91d0bd4acb2e1f.jpg,dirty-window,polygon,dirty window,"육안 심함 (금 간 듯한 줄무늬, 테이프 자국일 수 있음); 실내에서 본 창 전체; polygon=창 전체",4,fit
+data/public/dirty_windows/window-check/valid/images/93550948-stain-of-dust-on-dirty-glass-texture-background_jpg.rf.f3d83a33db1744a2c061093fd1cb007f.jpg,window-check,box,stain,면적 단계 4: 매우 넓음 (>0.95); 박스 합집합 면적 stain=1.0; 원본(valid); 같은 장면 15장 중 대표,4,holdout
+data/public/dirty_windows/window-check/valid/images/A-glass-window-which-has-lost-optical-properties-due-to-the-built-up-of-dirt_png.rf.6d5279dec118bd1e08748bea6920bda9.jpg,window-check,box,stain,면적 단계 4: 매우 넓음 (>0.95); 박스 합집합 면적 stain=1.0; 원본(valid); 같은 장면 14장 중 대표,4,fit
+data/public/dirty_windows/window-check/valid/images/aug_360_F_731103499_WD3S16MomHKauuFLKfYyF1lwTyjc0bOV_6_jpg.rf.2813b74149b017df79475d5495d14e27.jpg,window-check,box,stain,면적 단계 4: 매우 넓음 (>0.95); 박스 합집합 면적 stain=1.0; 원본(valid); 같은 장면 22장 중 대표,4,fit
+data/public/dirty_windows/window-check/valid/images/dirty-dusty-dark-window-glass-600nw-2457316631_webp.rf.307830aac12ddb15509c1b21b9c6f35f.jpg,window-check,box,stain,면적 단계 4: 매우 넓음 (>0.95); 박스 합집합 면적 stain=0.984; 원본(valid); 같은 장면 1장 중 대표,4,holdout
+data/public/dirty_windows/window-check/valid/images/images-12-_jpg.rf.a7c5db497410884527c413de16c24e32.jpg,window-check,box,stain,면적 단계 4: 매우 넓음 (>0.95); 박스 합집합 면적 stain=0.992; 원본(valid); 같은 장면 14장 중 대표,4,fit

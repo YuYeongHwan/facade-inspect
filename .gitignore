@@ -1,5 +1,6 @@
 data/*
 !data/DATASETS.md
+!data/eval/
 models/
 runs/
 .venv/

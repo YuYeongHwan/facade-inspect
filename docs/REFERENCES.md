@@ -32,6 +32,7 @@
   공개 배포·상업 이용 시 별도 허가 필요
 - 사용 부분: v2 학습 데이터 — 실외 장면만 골라 windowpane→window, building→facade, tree/grass/plant/flower→vegetation,
   pole→pole, door→door (`cv/facade_cv/detect/datasets/ade20k_convert.py`, `config/dataset.yaml` ade20k). 세부는 data/DATASETS.md
+  **v2에서는 제외** (2016판은 외벽 창문·문이 building에 포함). 2021 전체판(instance·part 주석)은 배포 사이트(https://ade20k.csail.mit.edu/request_data) 서버 오류로 받을 수 없음 (2026-10-22)
 
 ### [R20] TTPLA
 - 저자: Rabab Abdelfattah, Xiaofeng Wang, Song Wang
@@ -64,6 +65,21 @@ Roboflow Universe 사용자 업로드 데이터셋 (저자 이름 없음 — "Pr
   소금·후추 잡음 5%) — https://universe.roboflow.com/dirty-window/window-check
 - [R28] window check2 — workspace `dirty-window`, v2 (2026-05-23), export 2026-10-21, 263장, YOLOv11 box,
   클래스·전처리·증강은 [R27]과 같음 — https://universe.roboflow.com/dirty-window/window-check2
+
+### [R29] Street Trees Detection (Roboflow Universe)
+- 제공: Roboflow 사용자 (workspace `treedetection-vf07h`, 저자 이름 없음). 버전 v4 (2024-06-05), export 2026-06-30
+- 링크: https://universe.roboflow.com/treedetection-vf07h/street-trees-detection
+- 라이선스: CC BY 4.0 (출처 표시 필요)
+- 내용: 거리 시점 나무 1,477장 (원본 615장 × 증강), YOLOv11, 클래스 `Tree` 1개 — 박스(일부 원본은 거친 polygon)
+- 사용 부분: v2 vegetation 후보 — **검토 후 미사용** (박스가 줄기·하단 수관만, data/DATASETS.md). 변환 도구는 SAM([R30])으로 박스에서 polygon 자동 생성
+  (`cv/facade_cv/detect/datasets/box_to_seg_sam.py`, `config/dataset.yaml` box_to_seg). 세부는 data/DATASETS.md
+
+### [R30] SAM 2 (Segment Anything Model 2)
+- 저자: Nikhila Ravi 외 (Meta AI)
+- 연도: 2024
+- 제목: SAM 2: Segment Anything in Images and Videos. arXiv:2408.00714
+- 코드·가중치: https://github.com/facebookresearch/sam2 (Apache-2.0), Ultralytics 래퍼 `SAM("sam2.1_b.pt")` ([R8])
+- 사용 부분: 박스 프롬프트 → 마스크 (`box_to_seg_sam.py`. [R29]에 적용했으나 결과 미사용)
 
 ## 오염 점수·청소 우선순위
 

@@ -3,7 +3,7 @@
 ## train_seg.ipynb — 창문/외벽/장애물 분할 학습 v2 (Colab)
 
 YOLO11s-seg 2단계, 클래스 v2 (`config/classes.yaml`: window, facade, vegetation, wire, pole, door):
-Stage1 공개 데이터(CMP·ADE20K·TTPLA·Roboflow, ≤3,000장, imgsz 640) → Stage2 공개 표본 1,000장 + 자체 데이터(train ×3) 미세조정 (imgsz 1024).
+Stage1 공개 데이터(CMP·TTPLA·Roboflow — ADE20K는 v2 제외, ≤3,000장, imgsz 640) → Stage2 공개 표본 1,000장 + 자체 데이터(train ×3) 미세조정 (imgsz 1024).
 자체 test셋으로 클래스별 mask mAP50 / mAP50-95와 창문 개수 정확도를 내고, `seg_window_facade_v2.pt`와 모델 카드(학습 데이터 출처 [R번호])를 드라이브에 남긴다.
 자체 데이터가 아직 없으면 `STAGE1_ONLY = True`로 공개 데이터만 학습할 수 있다.
 
@@ -22,21 +22,20 @@ val·AutoBatch 시간은 빠져 있어 실제는 10~20% 더 걸릴 수 있다. �
 
 ### 1. 로컬: 데이터셋 zip 만들기 (레포 루트에서)
 
-공개 데이터는 `data/external/<이름>/`에 받아 둔다 (루트 README "0. 공개 데이터"). 없는 것은 변환기가 안내만 출력하고 건너뛴다.
+공개 데이터는 `data/public/<이름>/`에 받아 둔다 (루트 README "0. 공개 데이터"). 없는 것은 변환기가 안내만 출력하고 건너뛴다.
 
 ```bash
 # 변환 (각각 data/yolo/<이름>/)
 uv run --project cv python -m facade_cv.detect.datasets.cmp_convert --src data/cmp --out data/yolo/cmp
-uv run --project cv python -m facade_cv.detect.datasets.ade20k_convert     # data/external/ade20k → data/yolo/ade20k
-uv run --project cv python -m facade_cv.detect.datasets.ttpla_convert      # data/external/ttpla → data/yolo/ttpla
-uv run --project cv python -m facade_cv.detect.datasets.roboflow_convert   # data/external/roboflow/<키> → data/yolo/roboflow/<키>
+uv run --project cv python -m facade_cv.detect.datasets.ttpla_convert      # data/public/ttpla → data/yolo/ttpla
+uv run --project cv python -m facade_cv.detect.datasets.roboflow_convert   # data/public/roboflow/<키> → data/yolo/roboflow/<키>
 # 자체 (Label Studio JSON export, 라벨러 2명 export를 각각 변환해 같은 폴더로)
 uv run --project cv python -m facade_cv.detect.datasets.label_studio.export_to_yolo \
     --export export_batch1.json --images data/own/b04_obstacle/raw --out data/yolo/own   # batch2도 같은 --out
 
 # 병합 (균형 상한·분할) → zip
 uv run --project cv python -m facade_cv.detect.datasets.merge_datasets --out data/yolo/merged_v2 \
-    --cmp data/yolo/cmp --ext ade20k=data/yolo/ade20k --ext ttpla=data/yolo/ttpla \
+    --cmp data/yolo/cmp --ext ttpla=data/yolo/ttpla \
     --ext roboflow_building_facade=data/yolo/roboflow/building_facade \
     --ext roboflow_facade_test=data/yolo/roboflow/facade_test \
     --ext roboflow_window_segment=data/yolo/roboflow/window_segment \

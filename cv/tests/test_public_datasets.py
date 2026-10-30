@@ -15,7 +15,7 @@ from facade_cv.detect.datasets.ade20k_convert import convert_ade20k
 from facade_cv.detect.datasets.cmp_convert import convert_cmp
 from facade_cv.detect.datasets.merge_datasets import balance, merge
 from facade_cv.detect.datasets.roboflow_convert import convert_roboflow
-from facade_cv.detect.datasets.ttpla_convert import convert_ttpla
+from facade_cv.detect.datasets.ttpla_convert import Tile, clip_to_tile, convert_ttpla, select_tiles, tile_origins, wire_width
 
 V2 = class_names("v2")
 WINDOW, FACADE, VEG, WIRE, POLE, DOOR = range(6)
@@ -80,7 +80,7 @@ def test_ade20k_v1_keeps_two_classes(tmp_path):
     assert {c for c, _ in _read_label(tmp_path / "out" / "labels" / "ADE_train_1.txt")} == {WINDOW, FACADE}
 
 
-@pytest.mark.parametrize("fn", [convert_ade20k, convert_ttpla])
+@pytest.mark.parametrize("fn", [convert_ade20k, lambda s, o: convert_ttpla(s, o)["tiles"]])
 def test_missing_source_prints_guide(tmp_path, capsys, fn):
     assert fn(tmp_path / "nope", tmp_path / "out") == 0
     assert "skip" in capsys.readouterr().out and not (tmp_path / "out").exists()
@@ -95,20 +95,85 @@ def _labelme(d, stem, shapes, w=400, h=200):
         "shapes": [{"label": lab, "points": pts, "shape_type": "polygon"} for lab, pts in shapes]}))
 
 
-def test_ttpla_mapping_and_resize(tmp_path):
+def _ttpla_cfg(**kw):
     cfg = load_config("dataset")
-    cfg["ttpla"]["max_side"] = 100
-    cable = [[0, 50], [400, 52], [400, 56], [0, 54]]
-    wooden = [[100, 20], [110, 20], [110, 200], [100, 200]]
-    lattice = [[200, 0], [260, 0], [260, 200], [200, 200]]
-    _labelme(tmp_path / "ttpla", "a", [("cable", cable), ("tower_wooden", wooden), ("tower_lattice", lattice)])
-    _labelme(tmp_path / "ttpla", "b", [("tower_lattice", lattice), ("void", lattice)])  # 매핑 없음 → 이미지 버림
-    assert convert_ttpla(tmp_path / "ttpla", tmp_path / "out", cfg, V2) == 1
-    inst = _read_label(tmp_path / "out" / "labels" / "a.txt")
-    assert sorted(c for c, _ in inst) == [WIRE, POLE]
-    np.testing.assert_allclose(next(p for c, p in inst if c == POLE)[0], [100 / 400, 20 / 200], atol=1e-6)
-    assert cv2.imread(str(tmp_path / "out" / "images" / "a.jpg")).shape[:2] == (50, 100)
+    cfg["ttpla"] |= {"tile": 100, "max_tiles": 10, "per_video": 4, "wire_only_ratio": 0.3} | kw
+    return cfg
 
+
+def test_ttpla_mapping_case_void_and_tiles(tmp_path):
+    """Cable(대문자) → wire, tower_wooden → pole, 철탑 버림. 300×200 → 100px 타일 3×2. void는 회색으로 칠함."""
+    cable = [[0, 50], [300, 52], [300, 56], [0, 54]]          # 가로로 타일 3개를 지나는 전선
+    wooden = [[120, 20], [130, 20], [130, 90], [120, 90]]     # 가운데 위 타일 안 기둥
+    lattice = [[200, 120], [260, 120], [260, 190], [200, 190]]
+    void = [[10, 110], [60, 110], [60, 160], [10, 160]]       # 왼쪽 아래 타일
+    _labelme(tmp_path / "ttpla", "7_00010", [("Cable", cable), ("tower_wooden", wooden), ("tower_lattice", lattice),
+                                            ("void", void)], w=300, h=200)
+    _labelme(tmp_path / "ttpla", "7_00020", [("tower_lattice", lattice)], w=300, h=200)  # 매핑 없음 → 타일 없음
+    st = convert_ttpla(tmp_path / "ttpla", tmp_path / "out", _ttpla_cfg(), V2)
+    assert st["candidates"] == 3  # 전선이 지나는 위쪽 3칸만 후보 (아래쪽 3칸은 wire·pole 없음)
+    # 한 프레임에서는 타일 1장 (같은 순간의 타일끼리 중복 회피) → pole 있고 인스턴스 많은 가운데 타일
+    assert st["tiles"] == 1 and st["instances"] == {"wire": 1, "pole": 1}
+    assert [p.stem for p in (tmp_path / "out" / "labels").glob("*.txt")] == ["7_00010_t1"]
+    mid = _read_label(tmp_path / "out" / "labels" / "7_00010_t1.txt")
+    assert sorted(c for c, _ in mid) == [WIRE, POLE]
+    pole = next(p for c, p in mid if c == POLE)
+    np.testing.assert_allclose(pole.min(0), [0.20, 0.20], atol=0.011)  # 타일 좌표 (120−100)/100
+    assert cv2.imread(str(tmp_path / "out" / "images" / "7_00010_t1.jpg")).shape[:2] == (100, 100)  # 축소 없음
+
+
+def test_ttpla_void_filled_gray(tmp_path):
+    void = [[10, 10], [60, 10], [60, 60], [10, 60]]
+    cable = [[0, 80], [100, 82], [100, 86], [0, 84]]
+    _labelme(tmp_path / "ttpla", "1_00001", [("cable", cable), ("void", void)], w=100, h=100)
+    convert_ttpla(tmp_path / "ttpla", tmp_path / "out", _ttpla_cfg(), V2)
+    img = cv2.imread(str(tmp_path / "out" / "images" / "1_00001_t0.jpg"))
+    assert np.abs(img[35, 35].astype(int) - 114).max() <= 2 and img[5, 95].max() <= 2  # void 안 회색, 밖은 원래(검정)
+
+
+def test_tile_origins_cover_with_overlap():
+    tiles = tile_origins(3840, 2160, 1280)
+    assert [(x, y) for x, y, _, _ in tiles] == [(0, 0), (1280, 0), (2560, 0), (0, 880), (1280, 880), (2560, 880)]
+    assert tile_origins(800, 600, 1280) == [(0, 0, 800, 600)]  # 타일보다 작은 이미지는 통째로
+
+
+def test_clip_polygon_at_tile_border():
+    """타일 경계를 넘는 polygon은 잘라서 남기고, 잘린 조각이 min_area보다 작으면 버린다."""
+    rect = np.array([[80, 40], [140, 40], [140, 60], [80, 60]], float)  # x 80~140 — 타일 [0,100) 경계에서 잘림
+    inside = clip_to_tile(rect, (0, 0, 100, 100), min_area=10)
+    assert len(inside) == 1 and inside[0][:, 0].min() == 80 and inside[0][:, 0].max() == 99
+    right = clip_to_tile(rect, (100, 0, 100, 100), min_area=10)
+    assert len(right) == 1 and right[0][:, 0].min() == 0 and right[0][:, 0].max() == 40  # 타일 좌표로
+    assert clip_to_tile(rect, (0, 0, 100, 100), min_area=10_000) == []  # 너무 작으면 버림
+    assert clip_to_tile(rect, (300, 300, 100, 100), min_area=0) == []  # 타일 밖
+    # 타일 밖으로 나갔다 들어오는 U자 → 조각 2개
+    u = np.array([[10, 10], [30, 10], [30, 150], [70, 150], [70, 10], [90, 10], [90, 180], [10, 180]], float)
+    assert len(clip_to_tile(u, (0, 0, 100, 100), min_area=10)) == 2
+
+
+def test_wire_width_of_strip():
+    assert wire_width(np.array([[0, 0], [400, 0], [400, 4], [0, 4]], float)) == pytest.approx(4, rel=0.02)
+
+
+def test_select_tiles_quota_per_video_and_spread():
+    """pole 우선 (1−0.3), wire만 0.3, 영상당 4장, 같은 프레임 두 번 안 고르고 프레임 간격을 벌림."""
+    poly = np.array([[0, 0], [10, 0], [10, 10]], float)
+    tiles = []
+    for v in range(3):  # 영상 3개 × 프레임 0..9 × 타일 2개 (k0 = pole+wire, k1 = wire만)
+        for f in range(10):
+            tiles.append(Tile(f"{v}_{f:05d}", str(v), f, 0, (0, 0, 1, 1), [(POLE, poly), (WIRE, poly)]))
+            tiles.append(Tile(f"{v}_{f:05d}", str(v), f, 1, (0, 0, 1, 1), [(WIRE, poly)]))
+    cfg = _ttpla_cfg(max_tiles=10)
+    got = select_tiles(tiles, cfg, POLE)
+    assert len(got) == 10
+    assert sum(any(c == POLE for c, _ in t.instances) for t in got) == 7  # 10 × (1 − 0.3)
+    for v in "012":
+        frames = [t.frame for t in got if t.video == v]
+        assert len(frames) <= 4 and len(set(frames)) == len(frames)
+        if len(frames) >= 2:
+            assert min(abs(a - b) for i, a in enumerate(frames) for b in frames[i + 1:]) >= 2  # 연속 프레임 아님
+    # wire만 있는 타일이 없으면 pole로 채운다
+    assert len(select_tiles([t for t in tiles if t.k == 0], cfg, POLE)) == 10
 
 # ── Roboflow ──
 def _roboflow(d, names, lines):

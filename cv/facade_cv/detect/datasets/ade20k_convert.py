@@ -1,6 +1,6 @@
 """ADE20K SceneParsing [R19] (ADEChallengeData2016, 비상업 연구·교육용) → YOLO-seg. 변환 규칙: data/DATASETS.md
 
-python -m facade_cv.detect.datasets.ade20k_convert --src data/external/ade20k --out data/yolo/ade20k
+python -m facade_cv.detect.datasets.ade20k_convert --src data/public/ade20k --out data/yolo/ade20k
 --src 아래 ADEChallengeData2016/{objectInfo150.csv, sceneCategories.txt, images/*, annotations/*} (zip 압축 해제 그대로).
 실외 장면(config ade20k.outdoor_scenes) + sky 비율 ≥ min_sky_ratio + building 비율 ≥ min_facade_ratio + window 있음만 사용.
 라벨 PNG 픽셀값 = objectInfo150.csv Idx (1~150, 0 = 기타). 클래스 이름은 Name 열 첫 이름 (windowpane;window → windowpane).
@@ -18,7 +18,7 @@ from facade_cv.config import class_names, load_config
 from facade_cv.detect.datasets.yolo import mask_to_polygons, source_missing, write_label
 
 GUIDE = """ADE20K SceneParsing (가입 불필요, 923MB zip, 해제 ~2.3GB. 이미지는 비상업 연구·교육용만 [R19]):
-  mkdir -p data/external/ade20k && cd data/external/ade20k
+  mkdir -p data/public/ade20k && cd data/public/ade20k
   curl -LO http://data.csail.mit.edu/places/ADEchallenge/ADEChallengeData2016.zip && unzip -q ADEChallengeData2016.zip"""
 
 
@@ -89,10 +89,13 @@ def convert_ade20k(src: str | Path, out: str | Path, cfg: dict | None = None, na
 
 
 def main(
-    src: Path = typer.Option(Path("data/external/ade20k")),
+    src: Path = typer.Option(Path("data/public/ade20k")),
     out: Path = typer.Option(Path("data/yolo/ade20k")),
     classes: str = typer.Option(None, help="v1 | v2 (config/classes.yaml, 기본 active)"),
 ) -> None:
+    if not load_config("dataset")["ade20k"].get("enabled", True):
+        print("skip: config/dataset.yaml ade20k.enabled = false (2016판은 외벽 창문·문이 building에 포함 — data/DATASETS.md)")
+        return
     print(f"{convert_ade20k(src, out, names=class_names(classes))} images → {out}")
 
 

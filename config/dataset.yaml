@@ -22,6 +22,9 @@ cmp:                      # CMP Facade Database [R1] — data/DATASETS.md
   door: [door]            # v2: 연결 성분마다 door 인스턴스 하나 (v1이면 버림)
 
 ade20k:                   # ADE20K SceneParsing [R19] — data/DATASETS.md. 이름은 objectInfo150.csv Name 열의 첫 이름
+  # v2 제외: 2016판(SceneParsing)은 외벽의 창문·문이 building에 포함돼 window/door 라벨이 거의 없다 (실외 선별 2,011장 중
+  # window 있는 이미지 41장). 2021 전체판은 배포 사이트 오류로 받을 수 없음 (2026-10-22) → vegetation은 Roboflow로 대체
+  enabled: false          # false면 CLI가 변환하지 않고 이유만 출력 (함수 API·테스트는 그대로)
   # 실외 장면만: sceneCategories.txt 장면이 이 목록에 있고, sky 픽셀 비율 ≥ min_sky_ratio
   outdoor_scenes: [street, building_facade, skyscraper, house, apartment_building_outdoor, office_building,
                    hotel_outdoor, church_outdoor, mosque_outdoor, temple_east_asia, temple_south_asia, castle, palace,
@@ -36,12 +39,16 @@ ade20k:                   # ADE20K SceneParsing [R19] — data/DATASETS.md. 이�
   require: [window]       # 이 클래스 인스턴스가 하나 이상 있어야 사용
 
 ttpla:                    # TTPLA [R20] — labelme JSON (shape label). 매핑에 없는 라벨은 버림 (철탑, void)
-  map: {cable: wire, tower_wooden: pole}
-  max_side: 1280          # 원본 3840×2160 → 긴 변을 이 크기로 줄여 저장
+  map: {cable: wire, tower_wooden: pole}   # 라벨 대소문자 무시 (원본에 "Cable" 28개)
+  void_fill: [114, 114, 114]   # void(불명확 영역) polygon을 이미지에서 이 색(BGR)으로 칠한 뒤 저장 — 라벨 없는 전선이 배경으로 학습되지 않게
+  tile: 1280              # 축소 대신 원본(3840×2160)에서 이 크기 타일로 자름 → 전선 굵기 유지 (가로 3칸 × 세로 2칸 겹침)
+  max_tiles: 200          # 최종 타일 수 (merge balance.ttpla와 같게)
+  per_video: 4            # 같은 영상(파일명 `<영상>_<프레임>` 접두어)에서 최대 타일 수. 서로 다른 프레임, 프레임 간격 최대로
+  wire_only_ratio: 0.3    # 최종 중 wire만 있는 타일 비율 (나머지는 pole 있는 타일 우선)
 
 roboflow:                 # Roboflow Universe [R21] — "YOLOv8/YOLO11" seg export (data.yaml + train/valid/test)
   licenses: ["CC BY 4.0", "CC BY-SA 4.0"]   # 이 라이선스만 허용
-  datasets:               # 키 = data/external/roboflow/<키>/. map에 없는 클래스는 버림 [확인 필요: 실제 export 클래스명]
+  datasets:               # 키 = data/public/roboflow/<키>/. map에 없는 클래스는 버림 [확인 필요: 실제 export 클래스명]
     building_facade:      # [R21-a]
       url: https://universe.roboflow.com/building-facade/building-facade-segmentation-instance
       version: 4
@@ -58,6 +65,19 @@ roboflow:                 # Roboflow Universe [R21] — "YOLOv8/YOLO11" seg expo
       license: CC BY 4.0
       map: {window: window, windows: window}
 
+box_to_seg:               # 박스 라벨 → SAM 마스크 → polygon (facade_cv.detect.datasets.box_to_seg_sam). 원본이 박스뿐인 데이터
+  sam_model: sam2.1_b.pt  # Ultralytics SAM, cv/weights/에 두거나 이름만이면 Ultralytics가 받음. Mac(mps)에서 장당 ~1초
+  # SAM 마스크(박스 안으로 자름) 품질 필터 — 박스 면적 대비
+  min_fill: 0.25          # 미만 → 버림 (SAM 실패, 나무를 못 잡음)
+  max_fill: 0.95          # 초과 → 버림 (박스를 그대로 칠함 — polygon이 박스와 다를 바 없다)
+  min_piece: 0.05         # 여러 조각이면 가장 큰 조각 + 이 이상 조각만 (각 조각 = polygon 한 줄)
+  datasets:               # 키 = data/public/roboflow/<키>/ = merge --ext 이름. 원본 polygon 줄은 SAM 없이 그대로 쓴다
+    veg_street_trees:     # [R29] 거리 시점 나무 — v2 미사용 (balance 상한 0, 사유 data/DATASETS.md)
+      url: https://universe.roboflow.com/treedetection-vf07h/street-trees-detection
+      version: 4
+      license: CC BY 4.0
+      map: {Tree: vegetation}
+
 # 공개 데이터 출처 (merge --ext 이름 → 참고문헌·라이선스). merge가 sources.json에 장수와 함께 기록 → MODEL_CARD.md
 sources:
   cmp: {ref: R1, license: CC BY-SA 3.0}
@@ -66,12 +86,14 @@ sources:
   roboflow_building_facade: {ref: R21-a, license: CC BY 4.0}
   roboflow_facade_test: {ref: R21-b, license: CC BY 4.0}
   roboflow_window_segment: {ref: R21-c, license: CC BY 4.0}
+  veg_street_trees: {ref: R29, license: CC BY 4.0}   # polygon은 SAM 자동 생성 (원본은 박스)
 
 # 공개 데이터 장수 상한 (merge_datasets). Colab T4에서 Stage1(imgsz 640, 35에폭)이 3시간 안에 끝나게 — 노트북 0번 셀 예상 시간
 # 소스 이름은 merge --ext 이름. roboflow_*는 roboflow로 합산. null = 제한 없음
 balance:
   max_total: 3000         # 공개 데이터 전체. 넘으면 상한 없는(null) 소스는 두고 나머지를 비율대로 줄임
-  max_images: {cmp: null, ade20k: 1500, ttpla: 200, roboflow: 1200}
+  max_images: {cmp: null, ade20k: 1500, ttpla: 200, roboflow: 1200, veg_street_trees: 0}
+  # veg_street_trees 0 = 사용 안 함 (박스가 줄기·하단 수관만 → data/DATASETS.md). 변환기 box_to_seg_sam은 남겨 둠
   # 상한 안에서는 희귀 클래스(전체 인스턴스 빈도 역수)를 가진 이미지부터 남긴다
 
 split:

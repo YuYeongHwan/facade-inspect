@@ -9,11 +9,12 @@
 |---|---|---|---|---|---|
 | CMP Facade Database — base | Tyleček & Šára, GCPR 2013 [R1] <br> https://cmp.felk.cvut.cz/~tylecr1/facade/ | CC BY-SA 3.0 | 378 | 378 (분할 학습) | `data/cmp/base` |
 | CMP Facade Database — extended | 〃 [R1] | CC BY-SA 3.0 | 228 | 228 (분할 학습) | `data/cmp/extended` |
-| ADE20K SceneParsing (ADEChallengeData2016) | Zhou et al., CVPR 2017 / IJCV 2019 [R19] <br> http://sceneparsing.csail.mit.edu/ | 이미지 **비상업 연구·교육용만**, 주석 BSD-3 | 22,210 (train 20,210 + val 2,000) | 실외 선별 후 ≤1,500 (v2 분할 학습) — 다운로드 후 갱신 | `data/external/ade20k` |
-| TTPLA | Abdelfattah, Wang, Wang, ACCV 2020 [R20] <br> https://github.com/r3ab/ttpla_dataset | Apache-2.0 | 1,100 (3840×2160) | ≤200 (v2, wire·pole) — 다운로드 후 갱신 | `data/external/ttpla` |
-| Roboflow building-facade-segmentation-instance v4 | Roboflow Universe `building-facade` [R21-a] | CC BY 4.0 | 2,226 | Roboflow 합계 ≤1,200 (v2) — 다운로드 후 갱신 | `data/external/roboflow/building_facade` |
-| Roboflow Facade_test | Roboflow Universe `ir-2znee` [R21-b] | CC BY 4.0 | 382 | 〃 | `data/external/roboflow/facade_test` |
-| Roboflow window-segment-main | Roboflow Universe `mzworkspace-segj7` [R21-c] | CC BY 4.0 | [확인 필요] | 〃 | `data/external/roboflow/window_segment` |
+| ADE20K SceneParsing (ADEChallengeData2016) | Zhou et al., CVPR 2017 / IJCV 2019 [R19] <br> http://sceneparsing.csail.mit.edu/ | 이미지 **비상업 연구·교육용만**, 주석 BSD-3 | 22,210 (train 20,210 + val 2,000) | **0 — 제외** (아래 "ADE20K 제외"). 2021 전체판은 배포 사이트 오류로 받을 수 없음 | `data/public/ade20k/ADEChallengeData2016` (받아 둠, 미사용) |
+| TTPLA | Abdelfattah, Wang, Wang, ACCV 2020 [R20] <br> https://github.com/r3ab/ttpla_dataset | Apache-2.0 | **1,242** (3840×2160, 영상 85개, labelme polygon) | **타일 200장** (1280×1280, 영상 79개) — wire 1,633·pole 175 인스턴스 | `data/public/ttpla/data_original_size_v1` |
+| Roboflow building-facade-segmentation-instance v4 | Roboflow Universe `building-facade` [R21-a] | CC BY 4.0 | 2,226 | Roboflow 합계 ≤1,200 (v2) — 다운로드 후 갱신 | `data/public/roboflow/building_facade` |
+| Roboflow Facade_test | Roboflow Universe `ir-2znee` [R21-b] | CC BY 4.0 | 382 | 〃 | `data/public/roboflow/facade_test` |
+| Roboflow window-segment-main | Roboflow Universe `mzworkspace-segj7` [R21-c] | CC BY 4.0 | [확인 필요] | 〃 | `data/public/roboflow/window_segment` |
+| Roboflow Street Trees Detection v4 | Roboflow Universe `treedetection-vf07h` [R29] <br> https://universe.roboflow.com/treedetection-vf07h/street-trees-detection | CC BY 4.0 | 1,477 (= 원본 615 × 증강, 영상 8개 프레임) | **0 — 미사용** (아래 "공개 vegetation 후보 검토"). 시험 변환 503장 (SAM 자동 polygon, 원본은 박스) — 결과 삭제 | `data/public/roboflow/veg_street_trees` |
 | Roboflow dirty window v1 | Roboflow Universe `project-novx2` [R26] <br> https://universe.roboflow.com/project-novx2/dirty-window | CC BY 4.0 | 366 (train 254 / valid 112), 장면 366 | t7_dev 2 + csi_calib 25 (**평가만, 학습 미사용**) | `data/public/dirty_windows/dirty-window` |
 | Roboflow window check v3 | Roboflow Universe `dirty-window` [R27] <br> https://universe.roboflow.com/dirty-window/window-check | CC BY 4.0 | 865 (train 798 / valid 67), 고유 장면 ≈53 | t7_dev 16 + csi_calib 16 (평가만) | `data/public/dirty_windows/window-check` |
 | Roboflow window check2 v2 | Roboflow Universe `dirty-window` [R28] <br> https://universe.roboflow.com/dirty-window/window-check2 | CC BY 4.0 | 263 (train 243 / valid 20), 고유 장면 ≈45 | t7_dev 7 + csi_calib 4 (평가만) | `data/public/dirty_windows/window-check2` |
@@ -33,6 +34,7 @@
 ## v2 공개 데이터 장수 (merge_datasets balance)
 
 `config/dataset.yaml balance`: 공개 전체 ≤ **3,000장** (CMP 전체 606장 + ADE20K ≤1,500 + TTPLA ≤200 + Roboflow 합 ≤1,200).
+**ADE20K는 제외** — 상한 조정은 검토 중 (아래 표의 ADE20K 몫이 비어 실제 합은 ≤2,006).
 전체가 넘으면 상한 있는 소스를 비율대로 줄인다. 상한 안에서는 가진 클래스 중 가장 희귀한 클래스(전체 인스턴스 빈도)가
 드문 이미지부터 남긴다 (door·pole·wire가 있는 이미지 우선). 이유: 무료 Colab T4에서 Stage1(imgsz 640, 35에폭)이
 3시간 안에 끝나야 한다 — v1 실측(550장×100에폭@1024 = 2.1h) 기준 3,000장 ≈ 1.6h. 실제 장수는 merge 출력 `stats.json`/`sources.json`.
@@ -68,12 +70,66 @@ ADE20K·Roboflow semantic 원본의 인스턴스 = 클래스 마스크의 **연�
 - **facade = building만, wall 제외**: ADE20K의 wall은 실외 장면에서도 담장·옹벽·실내 벽이 섞여 있다.
   wall을 facade로 넣으면 담장 앞 창 없는 면을 외벽으로 배워 외벽 필터(후처리 b)가 무력해진다
 
+### ADE20K 제외 — 2016판 사용 불가, 2021 전체판 받을 수 없음
+받은 파일: `ADEChallengeData2016` (SceneParsing, 150클래스 semantic PNG, 22,210장). 2026-10-22 확인 결과 v2에 쓰지 않는다
+(`config/dataset.yaml ade20k.enabled: false`. 변환 코드 `ade20k_convert.py`와 테스트는 지우지 않고 남겨 둠).
+
+**2016판 (ADEChallengeData2016): 외벽 창문·문이 따로 라벨링되지 않음 → 사용하면 창문 학습을 해친다 → 제외.**
+근거: 실외 필터 후 창문 포함 41장, building_facade 장면 245장 중 windowpane 있는 것 1장. 세부:
+- **외벽의 창문·문이 `building`에 포함되어 있다.** SceneParsing은 물체 단위 150클래스만 남기고 부품(part)을 버린 판이라
+  건물 외벽의 창·문은 building 픽셀이다. building ≥ 10%인 이미지 중 windowpane 픽셀이 있는 비율:
+  building_facade 1/245, skyscraper 3/271, apartment_building_outdoor 0/71, street 56/2,115
+  (예: `ADE_train_00004594` — 창 12개·문 3개 외벽 전체가 building 하나)
+- 실외 선별(장면 3,635 → sky ≥5% 2,350 → building ≥10% 2,011) 후 window 인스턴스가 있는 이미지는 **41장**뿐이고 대부분 1층 상점 유리.
+  window 조건을 빼고 2,011장을 쓰면 "창·문이 있는 외벽 = facade"를 배워 CMP의 window/door 학습과 정면으로 충돌한다
+- instance 구분도 없다 → 연결 성분이 인스턴스: 붙은 건물들이 facade 하나(2,011장 중 이미지 20% 넘는 facade 1,591개), 가로수 줄이
+  vegetation 하나, 작은 조각은 버림(vegetation 9,025개). 파일도 변환기 기대와 다르다 (`objectInfo150.txt` 탭 구분, 이름 `,` 구분)
+
+**2021 전체판 (ADE20K_2021_17_01, instance·part 주석 — building의 부품 window·door 포함): 받을 수 없음.**
+배포 사이트 https://ade20k.csail.mit.edu/request_data 서버 오류 — PHP가 실행되지 않고(소스가 그대로 보임) 보안 코드 이미지가 깨져
+신청서를 제출할 수 없다. 2026-10-22 Chrome·Safari 모두에서 확인.
+
+**대안: vegetation은 Roboflow 데이터셋으로 대체** (후보·라이선스 확인 후 config roboflow.datasets에 등록). window·facade·door는
+CMP + Roboflow 창문 데이터셋, pole은 TTPLA(+ Roboflow 후보)로 채운다. ADE20K는 config에서 비활성화만 했다 — 사이트가 복구되면
+2021판용 reader를 새로 붙인다.
+
+### 공개 vegetation 후보 검토 → 결론: vegetation은 b04 자체 라벨로 확보
+
+| 후보 | 시점·라벨 | 판정 | 사유 |
+|---|---|---|---|
+| ADE20K 2016 (ADEChallengeData2016) [R19] | 지상, semantic | 제외 | 외벽 창문·문이 building에 포함돼 라벨 없음 → 창문 학습을 해친다 (위 "ADE20K 제외") |
+| ADE20K 2021 전체판 [R19] | 지상, instance·part | 받을 수 없음 | 배포 사이트(request_data) 서버 오류로 가입 불가 (2026-10-22) |
+| Roboflow Blue Halo vegetation-segmentation / tree-segmentation | 항공 | 제외 | 항공 시점 — 드론이 외벽을 보는 시점과 다르다 (사람이 썸네일로 확인) |
+| Roboflow Street Trees Detection v4 [R29] | 거리, **박스** (SAM으로 polygon 생성) | 제외 | 박스 범위 문제 (아래) |
+
+**Street Trees 제외 사유** (SAM 변환 샘플 12장 `runs/convert_check/street_trees_*.jpg`를 사람이 확인, 2026-10-22):
+1. 박스가 줄기·하단 수관만 감싼다 → **상단 수관 대부분이 배경으로 학습**된다
+2. 줄기만 칠한 마스크(가늘고 긴 세로 막대)가 **pole 클래스와 충돌**한다
+3. SAM이 박스 안의 **건물 벽·흙더미를 칠한 오류**가 있다
+
+설정: `config/dataset.yaml balance.max_images.veg_street_trees: 0` (비활성). 변환 도구 `box_to_seg_sam.py`(박스 → SAM 2.1 [R30] → polygon,
+면적 필터 25~95%·조각 5%)와 테스트는 다른 박스 데이터용으로 남겨 둔다. 시험 변환 기록: 원본 615장(1,477장 중 증강 사본 862 제외),
+SAM 박스 565개 중 유지 496 / 25% 미만 69, 최종 503장·인스턴스 931. 변환 결과 `data/yolo/veg_street_trees`는 삭제, 원본 export는 `data/public`에 유지.
+
+**결론: v2의 vegetation 정답은 b04 라벨뿐이다** — 라벨러가 가로수·화단·덤불·잔디·담쟁이를 빠짐없이 칠한다 (`docs/labeling_guide.md` 맨 위 강조).
+공개 데이터(CMP·TTPLA) 안의 나무는 라벨이 없어 배경으로 학습되는 한계가 남는다.
+
 ### TTPLA 사용 범위 결정
 - cable → wire: 도심 전선과 같은 물체 (항공 시점이지만 가는 선 모양은 같다)
 - tower_wooden → pole: 목재 전신주는 도심 전봇대와 형태(수직 단일 기둥)가 같다
 - tower_lattice·tower_tucohy 제외: 송전 철탑은 건물 외벽 앞에 서 있지 않고, 넣으면 pole이 격자 철골·건물 장식
   기둥으로 일반화될 위험이 있다. void(불명확 영역) 제외
-- 매핑된 인스턴스가 없는 이미지는 버리고, 긴 변 1280px로 줄여 저장. 항공 시점이라 장수 상한을 200장으로 낮게
+- 라벨 이름은 대소문자 무시 (원본에 `Cable` 28개 → wire)
+- **void 영역은 이미지에서 회색(114,114,114)으로 칠한다** — void 안 라벨 없는 전선이 배경으로 학습되지 않게
+- **축소 대신 타일**: 원본 3840×2160에서 1280×1280 타일 6개 (가로 3칸, 세로 2칸이 400px 겹침). polygon은 타일 경계에서 잘라 유지,
+  잘린 조각이 min_area_ratio(타일 면적 대비 wire 0.00002 ≈ 33px², pole 0.0002)보다 작으면 버림. wire·pole 없는 타일은 버림.
+  전선 평균 굵기: 원본 10.7px(중앙값 8.0) → 타일 8.0px. 예전 방식(긴 변 1280으로 축소, ×1/3)이면 3.6px
+- **선택 (200장)**: pole 있는 타일 140(70%) + wire만 있는 타일 60(30%, config `wire_only_ratio`). 같은 영상(파일명 `<영상>_<프레임>`)에서
+  최대 4장, 한 프레임에서는 1장, 이미 고른 프레임과 가장 먼 프레임부터 (영상 내 프레임 간격 최소 2, 중앙값 255). 영상 순서 round-robin
+- 결과 (2026-10-22): 후보 타일 6,341 → 200장, 영상 79개 (4장 27개·3장 14개·2장 12개·1장 26개). wire 1,633·pole 175 인스턴스.
+  샘플 `runs/convert_check/ttpla_01~08.jpg` (wire 노랑, pole 자홍)
+- **한계**: 200장 중 57장에 라벨 없는 철탑(tower_lattice 39장, tower_tucohy 25장)이 배경으로 남는다. tower_tucohy(콘크리트·강관 전주)는
+  도심 전봇대와 비슷해 pole과 충돌할 수 있다. TTPLA 자체 라벨에서 빠진 작은 전주도 있다 (샘플 8). 항공 시점이라 장수 상한을 200장으로 낮게
 
 ## 클래스 변환 규칙 v1 → YOLO-seg (0=window, 1=facade)
 

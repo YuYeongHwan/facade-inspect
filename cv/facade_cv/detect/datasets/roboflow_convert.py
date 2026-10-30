@@ -1,6 +1,6 @@
 """Roboflow Universe [R21] YOLO-seg export → 클래스 재매핑. config/dataset.yaml roboflow.datasets에 등록된 것만, 라이선스 화이트리스트만.
 
-python -m facade_cv.detect.datasets.roboflow_convert --src data/external/roboflow --out data/yolo/roboflow
+python -m facade_cv.detect.datasets.roboflow_convert --src data/public/roboflow --out data/yolo/roboflow
 --src/<키>/ 에 Roboflow "YOLOv8"(또는 YOLO11) 형식 export를 압축 해제 (data.yaml + train|valid|test/{images,labels}).
 출력: <out>/<키>/images, labels (merge --ext roboflow_<키>=<out>/<키>). 출력 파일명 = <split>_<원본 이름> (split 간 이름 충돌 방지).
 semantic 데이터셋도 YOLO-seg export는 polygon이라 같은 방식 (연결 성분이 인스턴스).
@@ -16,7 +16,7 @@ from facade_cv.config import class_names, load_config
 from facade_cv.detect.datasets.yolo import list_images, source_missing, write_label
 
 GUIDE = """Roboflow Universe (계정 필요, 데이터셋 페이지 → Download Dataset → 형식 "YOLOv8" (segmentation) → zip):
-  config/dataset.yaml roboflow.datasets의 url마다 받아 data/external/roboflow/<키>/ 에 압축 해제
+  config/dataset.yaml roboflow.datasets의 url마다 받아 data/public/roboflow/<키>/ 에 압축 해제
   (라이선스가 CC BY 계열인지 페이지에서 다시 확인하고 config license 칸과 맞출 것)"""
 
 
@@ -75,7 +75,7 @@ def convert_roboflow(
 
 
 def main(
-    src: Path = typer.Option(Path("data/external/roboflow")),
+    src: Path = typer.Option(Path("data/public/roboflow")),
     out: Path = typer.Option(Path("data/yolo/roboflow")),
     classes: str = typer.Option(None, help="v1 | v2 (config/classes.yaml, 기본 active)"),
 ) -> None:

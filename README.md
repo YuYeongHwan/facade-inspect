@@ -173,19 +173,25 @@ row/col은 프레임 단위 임시값 — 최종 창문 ID는 3D 외벽 평면�
 각 도구의 출력은 `<dir>/images/*`, `<dir>/labels/*.txt`이고, `merge_datasets`가 이것들을 합쳐 분할한다.
 출처·라이선스·장수·변환 규칙은 [data/DATASETS.md](data/DATASETS.md), 서지는 [docs/REFERENCES.md](docs/REFERENCES.md).
 
-### 0. 공개 데이터 (v2) — 사람이 `data/external/<이름>/`에 받아 둔다
+### 0. 공개 데이터 (v2) — 사람이 `data/public/<이름>/`에 받아 둔다
 
 변환기는 폴더가 없으면 다운로드 안내만 출력하고 건너뛴다.
 
 | 데이터 | 받는 곳 | 가입 | 용량 | 라이선스 | 변환 |
 |---|---|---|---|---|---|
-| ADE20K [R19] | `curl -LO http://data.csail.mit.edu/places/ADEchallenge/ADEChallengeData2016.zip` → `data/external/ade20k/`에 unzip | 불필요 | 923MB (해제 ~2.3GB) | 이미지 **비상업 연구·교육용만** (MIT CSAIL terms), 주석 BSD-3 | `python -m facade_cv.detect.datasets.ade20k_convert` |
-| TTPLA [R20] | https://github.com/r3ab/ttpla_dataset README의 Google Drive zip → `data/external/ttpla/` | 불필요 (Google 계정으로 받기) | 수 GB [확인 필요] | Apache-2.0 | `... .ttpla_convert` |
-| Roboflow [R21] | 데이터셋 페이지 → Download → "YOLOv8" 형식 zip → `data/external/roboflow/<키>/` (키·URL: `config/dataset.yaml roboflow.datasets`) | **필요** (무료 계정) | 수백 MB | CC BY 4.0 (화이트리스트 외 거부) | `... .roboflow_convert` |
+| ADE20K [R19] (**v2 제외**) | `curl -LO http://data.csail.mit.edu/places/ADEchallenge/ADEChallengeData2016.zip` → `data/public/ade20k/`에 unzip | 불필요 | 923MB (해제 ~2.3GB) | 이미지 **비상업 연구·교육용만** (MIT CSAIL terms), 주석 BSD-3 | `python -m facade_cv.detect.datasets.ade20k_convert` |
+| TTPLA [R20] | https://github.com/r3ab/ttpla_dataset README의 Google Drive zip → `data/public/ttpla/` | 불필요 (Google 계정으로 받기) | 4.2GB zip (해제 4.6GB, 1,242장) | Apache-2.0 | `... .ttpla_convert` |
+| Roboflow [R21] | 데이터셋 페이지 → Download → "YOLOv8" 형식 zip → `data/public/roboflow/<키>/` (키·URL: `config/dataset.yaml roboflow.datasets`) | **필요** (무료 계정) | 수백 MB | CC BY 4.0 (화이트리스트 외 거부) | `... .roboflow_convert` |
 
-- ADE20K: 실외 장면(`sceneCategories.txt`) + sky ≥5% + building ≥10% + 창문 있음만. facade = building만 (wall 제외)
-- TTPLA: cable → wire, tower_wooden → pole (철탑 제외), 긴 변 1280px로 축소
+- ADE20K: **v2에서 제외** (`config/dataset.yaml ade20k.enabled: false`) — 2016판은 외벽 창문·문이 building에 포함돼 있다.
+  2021 전체판은 배포 사이트 오류로 받을 수 없음 → vegetation은 Roboflow로 대체. 근거는 data/DATASETS.md "ADE20K 제외"
+- TTPLA: cable(대소문자 무시) → wire, tower_wooden → pole (철탑 제외). void는 회색으로 칠함. 축소 대신 1280×1280 타일
+  (전선 굵기 유지), pole 타일 70% + wire만 30%, 영상당 4장·프레임 분산으로 200장 (`--debug` → `runs/convert_check/ttpla_*.jpg`)
 - Roboflow: 데이터셋별 클래스 매핑(`map`)에 없는 클래스는 버림. 실제 export 클래스명을 보고 `map`을 맞출 것
+- vegetation: 공개 데이터 없음 → **b04 자체 라벨로 확보** (후보 검토 data/DATASETS.md). 아래 `box_to_seg_sam`은 도구로만 남겨 둠 —
+  Street Trees [R29] (`data/public/roboflow/veg_street_trees/`)는 박스 범위 문제로 미사용 (`balance` 상한 0). 원본이 박스 → SAM 2.1([R30])로 polygon 자동 생성
+  `python -m facade_cv.detect.datasets.box_to_seg_sam --debug` → `data/yolo/veg_street_trees` (샘플 `runs/convert_check/street_trees_*.jpg`).
+  박스 면적 대비 마스크 25% 미만·95% 초과는 버림, 원본 polygon 줄은 그대로, 증강 사본은 원본당 1장. 설정 `config/dataset.yaml box_to_seg`
 
 ### 1. CMP Facade 변환
 
@@ -246,13 +252,13 @@ uv run --project cv python -m facade_cv.detect.datasets.label_studio.prelabel --
 
 ```bash
 uv run --project cv python -m facade_cv.detect.datasets.merge_datasets \
-    --cmp data/yolo/cmp --ext ade20k=data/yolo/ade20k --ext ttpla=data/yolo/ttpla \
+    --cmp data/yolo/cmp --ext ttpla=data/yolo/ttpla \
     --ext roboflow_building_facade=data/yolo/roboflow/building_facade \
     --own data/yolo/own --out data/yolo/merged   # --ext/--own 여러 번 가능 (없는 --ext 디렉토리는 건너뜀), 재실행은 --overwrite
 ```
 
 - 공개 데이터(CMP 포함): train 0.9 / val 0.1 / **test 0 강제** — 시험셋은 자체 촬영만. 출력 파일명 `pub_<소스>__<원본>`
-- 장수 상한 `balance`: 공개 전체 ≤3,000 (ADE20K ≤1,500, TTPLA ≤200, Roboflow 합 ≤1,200, CMP 전체), 상한 안에서는 희귀 클래스 우선
+- 장수 상한 `balance`: 공개 전체 ≤3,000 (ADE20K ≤1,500 — v2 제외, TTPLA ≤200, Roboflow 합 ≤1,200, veg_street_trees 0 — 미사용, CMP 전체), 상한 안에서는 희귀 클래스 우선
 - 출력: `data.yaml`, `stats.json`(split·소스·클래스별 이미지/인스턴스 수), `sources.json`(소스 → [R번호]·라이선스·장수, 모델 카드용)
 - 자체 데이터 그룹 `split.own_group_by`: `flight`(영상 하나) / `segment`(기본 — 프레임 600개 구간, 다른 split 경계 ±60프레임 버림)
 - 자체 데이터: train 0.6 / val 0.2 / test 0.2, val·test에 최소 1그룹씩 보장 (그룹이 2개 미만이면 에러)
@@ -314,12 +320,6 @@ uv run --project cv python -m facade_cv.contamination.calibrate agreement
 uv run --project cv python -m facade_cv.contamination.calibrate fit --regions runs/insp_001/result.json --doc docs/scoring.md
 ```
 
-## 목업 (fixtures/)
-
-박스 건물(12×24×8, 상대 단위) 외벽 4면(F1~F4), 창문 20개(청소 우선순위 level 1~5 = 6/4/4/4/2, 그중 4개는 창 앞 나뭇가지 가림).
-crop에 오염 영역을 심각도별 색차로 그린 뒤 `contamination/grade.py` `grade_window`로 실제 측정해 CSI·level을 매긴다
-(유리 면적 = 창틀 마진·가림 제외, 영역별 ΔE → 심각도). 계산에 쓴 값은 `meta.csi_params`.
-`cv/tests/test_schema.py`가 같은 result.json을 pydantic과 web zod(`web/scripts/validate-result.mjs`) 양쪽으로 검증한다.
 ## 오염 영역 검출·유형 분류 (facade_cv.contamination.analyze) — T7
 
 규칙 기반 (학습 없음), 설정 `config/contamination.yaml`, 설명·한계·튜닝 기록은 [docs/scoring.md](docs/scoring.md) "오염 영역 검출과 유형 분류".
@@ -340,4 +340,10 @@ crop에 오염 영역을 심각도별 색차로 그린 뒤 `contamination/grade.
 - 보정 준비: `evaluate calib` → `runs/csi_calib/` (images/·regions.json·sheet.html은 평가용, pred.csv·key.csv는 평가자에게 주지 않음).
   평가자 csv를 `data/ratings/`에 두고 `calibrate fit --regions runs/csi_calib/regions.json`. 이 결과로 contamination.yaml을 고치지 않는다
 
+## 목업 (fixtures/)
+
+박스 건물(12×24×8, 상대 단위) 외벽 4면(F1~F4), 창문 20개(청소 우선순위 level 1~5 = 6/4/4/4/2, 그중 4개는 창 앞 나뭇가지 가림).
+crop에 오염 영역을 심각도별 색차로 그린 뒤 `contamination/grade.py` `grade_window`로 실제 측정해 CSI·level을 매긴다
+(유리 면적 = 창틀 마진·가림 제외, 영역별 ΔE → 심각도). 계산에 쓴 값은 `meta.csi_params`.
+`cv/tests/test_schema.py`가 같은 result.json을 pydantic과 web zod(`web/scripts/validate-result.mjs`) 양쪽으로 검증한다.
 `result.json` 안의 경로는 모두 `fixtures/` 기준 상대경로다.

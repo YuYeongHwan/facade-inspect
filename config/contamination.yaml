@@ -1,0 +1,109 @@
+# 창문 오염 영역 검출·유형 분류 (facade_cv.contamination.analyze) — 규칙 기반, 학습 없음. 설명: docs/scoring.md "오염 영역 검출과 유형 분류"
+# CSI 식·k_t·ΔE 경계·level 경계·창틀 마진은 config/grading.yaml (여기서 바꾸지 않는다)
+#
+# ⚠️ 튜닝은 data/eval/t7_dev.csv(30장)로만 한다. csi_calib.csv 결과를 보고 값을 바꾸지 않는다 (보정·검증용, 과적합 방지).
+#    튜닝 전 값은 각 줄 끝 "(초기 X)"로 남긴다. 표시가 없으면 초기값 그대로.
+#    1차 튜닝: global_delta_e {8,10,12} × local_delta_e {10,12,15} × min_area_ratio {0.002,0.004} 18조합,
+#    점수 = dirt/stain/heavy 박스 적중률 평균 + 깨끗한 창 level≤2 비율 − glare/wet 박스 안 오검출률 → 최고 (10, 12, 0.002).
+#    점수 차가 작아(0.86~0.97) 더 세밀하게 찾지 않았다 (30장 과적합 방지). 전후 지표: docs/scoring.md
+status: t7_dev 1차 튜닝 + 규칙 추가(keep_sharp·막대 경계·반사 의심) (2026-10-30). multiview는 b04 정렬 상관으로 ecc_band·ecc_max_shift만 정함, 나머지 초기값
+
+# 정면화 창문 이미지 (단일 모드: 검출 4코너 → 직사각형 호모그래피)
+rectify:
+  max_side: 640          # 분석 해상도 긴 변 (px). 이보다 크면 축소 — 처리 시간·JPEG 잡음 억제
+  min_side: 64           # 정면화 결과 짧은 변이 이보다 작으면 분석하지 않음 = 미분석 (창틀 마진 6%가 4px 미만, 유리 위 오염을 분해 못 함) (초기 24)
+
+# 유리 기준색 = 유리 픽셀 중 L*가 이 분위 사이인 것의 LAB 중앙값 (반사·짙은 얼룩 같은 극단 제외한 강건 기준) — ΔE·k_s용
+# 후보 검출용 배경 = 유리 픽셀에 채널별 2차 곡면을 강건하게 맞춘 것 (하늘·조명의 완만한 기울기 흡수)
+reference:
+  l_quantiles: [0.25, 0.75]
+  fit_samples: 4000      # 곡면 맞춤에 쓰는 픽셀 수 (균등 추출)
+  fit_iters: 3           # 반복 (잔차 큰 픽셀 제외 후 다시 맞춤)
+  fit_keep: 0.7          # 매 반복 잔차 하위 이 비율만 남김
+
+# 다시점 정렬 (multiview.py) — 같은 창문의 여러 프레임 관측을 정면화·ECC 정렬 [R31] → 픽셀별 중앙값·시간 변동
+multiview:
+  min_views: 3           # 관측(ECC 통과)이 이보다 적으면 단일 모드로
+  ecc_max_side: 200      # ECC는 이 크기로 줄여서 (속도)
+  ecc_iters: 50
+  ecc_eps: 1.0e-4
+  ecc_gauss: 5           # ECC 내부 가우시안 필터 크기
+  ecc_band: 0.12         # ECC 상관을 재는 창틀 띠 = 정면화 창문의 각 변에서 이 비율 (유리 안 반사는 시점마다 달라 제외)
+  ecc_max_shift: 0.2      # ECC 보정으로 코너가 짧은 변 × 이 값 넘게 움직이면 퇴화한 해로 보고 그 관측을 버림 (검출 오차 보정만 허용)
+  ecc_min: 0.6           # 정렬 후 상관계수가 이보다 낮은 관측은 버림 (가림·다른 창문·심한 반사 변화)
+  mad_max: 8.0           # 픽셀별 시간 변동 (채널별 MAD의 LAB 거리)이 이 이상이면 '시점에 따라 바뀜' = 반사·실내 → 후보 제외
+  misalign_mad: 6.0      # 유리 안 시간 변동 중앙값이 이보다 크면 정렬 실패로 보고 단일 모드로
+
+# 오염 후보 = 전역 ΔE 또는 국소 ΔE가 임계 이상인 유리 픽셀 (CIE76 ΔE*ab [R22])
+candidate:
+  blur_sigma: 1.0        # 픽셀 ΔE 계산 전 가우시안 σ (px) — JPEG 블록·센서 잡음 억제
+  global_delta_e: 10.0   # 칸별 배경 곡면 대비 ΔE. 넓은 옅은 먼지·때 (초기 8.0)
+  local_delta_e: 12.0    # 국소 배경(큰 median) 대비 ΔE. 작은 점·줄무늬 (유리 뒤 풍경의 큰 변화는 배경에 흡수) (초기 10.0)
+  local_bg_ratio: 0.12   # 국소 배경 median 커널 = 짧은 변 × 이 비율 (홀수로 맞춤)
+  open_px: 2             # 열림 (가는 잡음 제거) 구조요소 크기
+  close_px: 5            # 닫힘 (끊긴 얼룩 잇기)
+  min_area_ratio: 0.002  # 영역(묶은 뒤) 면적이 A_g의 이 비율 미만이면 잡음으로 버림
+  line_span: 0.85        # 유리 높이(폭)의 이 비율 이상이 '다른' 열(행) = 창틀·창살·비친 모서리 막대 → 제외 (두께 무관)
+  line_tol_ratio: 0.01   #   정면화 오차로 기운 막대 허용: 짧은 변 × 이 값(px)만큼 옆으로 번지게 해서 셈
+  line_min_edge: 3.0     #   그중 경계 밝기 계단 |ΔL*| (line_edge_step px 건너) 평균이 이 이상인 것만 막대 — 노을·하늘 그라데이션 띠는 남김
+  line_edge_step: 2      #   경계 계단을 재는 간격 (px)
+  min_pane_ratio: 0.03   # 직선 구조로 나눈 유리 칸 중 유리의 이 비율 이상만 칸으로 (배경을 칸마다 따로 맞춤)
+  line_dilate_px: 3      # 직선 구조 제외 마스크 팽창 (경계 잔여 제거)
+  max_area_ratio: 0.85   # 후보가 유리의 이 비율을 넘으면 기준색 자체가 오염/배경이라 판단 → 국소 후보만 사용
+
+# 반사광 제외 — 매우 밝고 채도 낮은 픽셀 (하늘·햇빛 반사). 팽창해서 후보에서 뺀다
+glare:
+  L_min: 88.0            # L* (0~100)
+  C_max: 10.0            # 채도 C*ab = √(a²+b²)
+  dilate_px: 5
+  keep_sharp:            # 위 조건에 걸려도 아래를 모두 만족하는 조각은 반사가 아니라 흰 오염(새똥 등)으로 남긴다
+    enabled: true
+    min_edge: 5.0        #   윤곽 바깥 1px 띠의 L* 기울기 평균 (L*/px) — 반사광은 가장자리가 부드럽게 옅어져 작다
+    min_solidity: 0.8    #   조각 면적 / 볼록 껍질 면적 (덩어리)
+    max_area_ratio: 0.05 #   조각 면적 ≤ 유리 면적 × 이 값 (넓은 반사광은 날카로워도 반사로 본다)
+
+# 물기(wet_glass) 제외 시도 — 물방울 = 작은 조각이 많고 조각마다 밝은 하이라이트(정반사)가 박혀 있음
+wet:
+  min_components: 15     # 영역 안 조각 수가 이 이상이고
+  highlight_L: 80.0      # L* ≥ 이 값인 픽셀이
+  highlight_ratio: 0.10  # 영역 픽셀의 이 비율 이상이면 물기로 보고 제외
+
+# 반사 의심 (단일 이미지 시험 규칙) — 넓은 후보 영역 안에 강한 윤곽·긴 직선(비친 나무·건물)이 많으면 CSI에서 빼고 따로 표시
+reflection:
+  enabled: true          # t7_dev: 켜면 깨끗한 창 level≤2 0.38→0.57, dirt·stain 적중 변화 없음 (docs/scoring.md)
+  min_area_ratio: 0.05   # 영역 면적 ≥ A_g × 이 값일 때만 검사
+  interior_erode_px: 5   # 영역 외곽선 자체는 세지 않도록 이 반지름(px)만큼 깎은 안쪽에서만 윤곽·직선 밀도를 잰다
+  canny_low: 50          # 강한 윤곽 (Canny, 흐림 σ1 후 8bit 회색)
+  canny_high: 150
+  min_edge_density: 0.12 # 묶음 영역 안 윤곽 픽셀 비율 ≥ 이 값이면 반사 의심 (격자 {0.05, 0.08, 0.12} 중, 0.05·0.08은 dirt·stain 적중 하락)
+  line_len_ratio: 0.15   # 긴 직선 = LSD 선분 길이 ≥ 짧은 변 × 이 값
+  min_line_density: 0.01 # 묶음 영역 안 긴 직선 픽셀 비율 ≥ 이 값이면 반사 의심 (격자 {0.005, 0.01, 0.02, 0.04} 중 가운데 — 빗물 줄무늬도 직선이라 공격적인 값은 피함)
+
+# 유형 규칙 — 위에서부터 첫 일치 (heavy → grime → stain → dust)
+heavy:                   # 새똥·흙탕물: 짙고 덩어리진 영역
+  delta_e: 15.0          # 영역 ΔE (grading.yaml k_s 3 경계와 같은 값을 출발점으로)
+  solidity: 0.75         # 가장 큰 조각의 면적 / 볼록 껍질 면적
+  min_area_ratio: 0.003
+  max_components: 3      # 조각이 이보다 많으면 흩어진 것 → heavy 아님
+  max_elongation: 3.0    # 주축 길이비가 이보다 크면 띠·줄 → heavy 아님 (덩어리만)
+grime:                   # 창틀 아래·가장자리에 띠 모양으로 붙은 어두운 때
+  edge_band: 0.15        # 유리 아래·좌·우 가장자리에서 이 비율(유리 폭·높이 대비) 안을 띠로 봄
+  edge_frac: 0.6         # 영역 픽셀 중 띠 안 비율
+  max_dL: 0.0            # 영역 평균 L* − 기준 L* 가 이 값 미만 (= 기준보다 어두움)
+stain:                   # 빗물 자국(세로 줄) 또는 물방울 고리
+  elongation: 3.0        # 최소 외접 회전 사각형 긴 변 / 짧은 변
+  vertical_tol_deg: 25.0 # 긴 변이 수직에서 이 각 이내
+  ring_hole: 0.15        # 구멍 면적 / 외곽 면적 ≥ 이 값이면 고리
+dust:                    # 나머지. 흩어진 작은 점은 팽창으로 한 영역으로 묶는다
+  merge_ratio: 0.1       # 묶음 팽창 크기 = 짧은 변 × 이 비율 (점 간격이 이보다 가까우면 한 영역)
+
+# 출력
+polygon_eps: 0.01        # approxPolyDP 허용 오차 = 둘레 × 이 값
+heatmap_max_delta_e: 30.0 # heatmap.png 색 스케일 상한 (ΔE)
+overlay_alpha: 0.45      # overlay.png 유형 색 불투명도
+# 유형 색 — web/lib/palette.ts TYPE_COLORS와 같아야 한다 (cv/tests/test_contamination.py가 검사)
+type_colors: {dust: "#cbd5e1", stain: "#38bdf8", grime: "#a78bfa", heavy: "#ec4899"}
+
+# 검증 (facade_cv.contamination.evaluate) — 지표 정의용, 분석 결과에는 영향 없음
+eval:
+  hit_min: 0.05          # dirt/stain 박스 면적의 이 비율 이상이 오염으로 잡히면 그 박스는 "적중"

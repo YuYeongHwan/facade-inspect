@@ -46,6 +46,9 @@ export default function WindowDetail({
   const maxRatio = ratios ? Math.max(0.05, ...Object.values(ratios)) : 1;
   const heatmap = w.images.heatmap;
   const layerOptions = heatmap ? LAYERS : LAYERS.filter((l) => l.key !== "heatmap");
+  // 오염 면적 (배수 없음). 이전 result.json엔 raw_coverage_pct가 없으므로 영역 면적비 합으로 대신한다
+  const rawPct = w.raw_coverage_pct ?? (ratios ? Math.min(100, Object.values(ratios).reduce((a, b) => a + b, 0) * 100) : null);
+  const kMul = csiParams ? csiParams.severity_max * Math.max(...Object.values(csiParams.weights)) : null;
 
   return (
     <aside
@@ -53,7 +56,7 @@ export default function WindowDetail({
       className="fixed inset-x-0 bottom-0 z-30 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-neutral-800 bg-neutral-950/95 shadow-2xl backdrop-blur lg:inset-x-auto lg:bottom-0 lg:right-0 lg:top-14 lg:max-h-none lg:w-[420px] lg:rounded-none lg:border-l lg:border-t-0"
     >
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-neutral-800 bg-neutral-950/95 px-4 py-3">
-        <LevelBadge level={w.cleaning_level} size="lg" />
+        <LevelBadge level={w.cleaning_level} size="lg" lowConfidence={!!w.low_confidence} />
         <div className="min-w-0 flex-1">
           <div className="truncate font-mono text-sm">{w.id}</div>
           <div className="text-xs text-neutral-500">
@@ -105,6 +108,19 @@ export default function WindowDetail({
               className="absolute inset-0 h-full w-full"
               onMouseLeave={() => setHoverPoly(null)}
             >
+              {(w.reflection_suspects ?? []).map((r, i) => (
+                <polygon
+                  key={`r${i}`}
+                  points={r.polygon.map(([u, v]) => `${u},${v}`).join(" ")}
+                  fill="none"
+                  stroke="#facc15"
+                  strokeWidth={2}
+                  strokeDasharray="6 4"
+                  vectorEffect="non-scaling-stroke"
+                >
+                  <title>반사 의심 (유리 면적의 {pct(r.area_ratio)}) — CSI에서 제외</title>
+                </polygon>
+              ))}
               {w.contamination.map((c, i) => (
                 <polygon
                   key={i}
@@ -133,9 +149,51 @@ export default function WindowDetail({
         </div>
         <p className="text-xs text-neutral-500">
           {ratios
-            ? `오염 영역 ${w.contamination.length}개 — 영역에 마우스를 올리면 유형·면적비를 표시합니다.`
+            ? `오염 영역 ${w.contamination.length}개 — 영역에 마우스를 올리면 유형·면적비를 표시합니다.` +
+              (w.reflection_suspects?.length
+                ? ` 노란 점선 ${w.reflection_suspects.length}곳은 반사 의심(비친 나무·건물)으로 CSI에서 뺐습니다.`
+                : "")
             : "미분석 — 오염 분석(T7) 전입니다. 3D 복원 결과의 창문 위치·이미지만 있습니다."}
         </p>
+
+        {w.cleaning_level !== null && rawPct !== null && (
+          <section className="rounded-lg border border-neutral-800 px-3 py-2">
+            <p className="text-base">
+              오염 면적 <span className="font-semibold tabular-nums">{rawPct.toFixed(rawPct < 10 ? 1 : 0)}%</span> ·{" "}
+              <span className="font-semibold" style={{ color: LEVEL_STYLES[w.cleaning_level].color }}>
+                {w.cleaning_level}단계 {LEVEL_STYLES[w.cleaning_level].label}
+              </span>
+            </p>
+            {w.analysis_mode && (
+              <p className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-neutral-400">
+                <span className="rounded bg-neutral-800 px-1.5 py-0.5">
+                  {w.analysis_mode === "multi" ? `다시점 ${w.num_views}장 정렬` : "단일 이미지"}
+                </span>
+                {w.low_confidence && (
+                  <span
+                    className="rounded bg-amber-900/60 px-1.5 py-0.5 text-amber-200"
+                    title="한 장으로 분석해 반사·실내 비침을 오염과 구분하지 못했을 수 있습니다"
+                  >
+                    신뢰도 낮음
+                  </span>
+                )}
+              </p>
+            )}
+            {w.weighted_coverage_pct != null && (
+              <details className="mt-1.5 text-xs text-neutral-400">
+                <summary className="cursor-pointer select-none">
+                  상세: 가중 오염 면적률 <span className="tabular-nums">{w.weighted_coverage_pct.toFixed(1)}%</span> · CSI{" "}
+                  <span className="tabular-nums">{w.csi?.toFixed(3)}</span>
+                </summary>
+                <p className="mt-1 text-[11px] leading-relaxed text-neutral-500">
+                  오염 면적 = Σ 오염 면적 ÷ 유리 면적 (배수 없음, 최대 100%). 가중 오염 면적률 = Σ (오염 면적/유리 면적 × 심각도 k_s ×
+                  종류 가중치 k_t) × 100 = CSI × {kMul ?? "k_s_max × k_t_max"} × 100 (최대 {kMul !== null ? kMul * 100 : "—"}%). 등급은
+                  CSI 구간으로 정한다 — 아래 계산 내역.
+                </p>
+              </details>
+            )}
+          </section>
+        )}
 
         {ratios && (
           <section>

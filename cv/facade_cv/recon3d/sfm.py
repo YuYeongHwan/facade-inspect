@@ -122,6 +122,29 @@ def run_sfm(frames: str | Path, work: str | Path, cfg: dict | None = None) -> Sf
     return r
 
 
+def load_sfm(frames: str | Path, work: str | Path) -> SfmResult:
+    """run_sfm이 남긴 work/sparse/seed<k>/<model>/ 를 다시 읽는다 (SfM을 다시 돌리지 않음).
+    run_sfm과 같은 선택: seed 순서대로 보며 등록 프레임이 가장 많은 모델 (같으면 먼저 것)."""
+    import pycolmap
+
+    frames, work = Path(frames), Path(work)
+    names = [p.name for p in list_images(frames)]
+    best, best_n, num_models = None, 0, 0
+    seeds = sorted((work / "sparse").glob("seed*"), key=lambda p: int(p.name[4:]))
+    if not seeds:
+        raise FileNotFoundError(f"no SfM models in {work / 'sparse'} (run without --reuse-sfm first)")
+    for sd in seeds:
+        models = [pycolmap.Reconstruction(str(m)) for m in sorted(sd.iterdir(), key=lambda p: int(p.name)) if m.is_dir()]
+        top = max(models, key=lambda r: r.num_reg_images(), default=None)
+        if top is not None and top.num_reg_images() > best_n:
+            best, best_n, num_models = top, top.num_reg_images(), len(models)
+    if best is None:
+        return SfmResult([], np.empty((0, 3)), np.empty((0, 3), np.uint8), len(names), names, 0)
+    r = from_reconstruction(best, len(names), names, num_models)
+    r.camera_info["reused"] = str(work)
+    return r
+
+
 def main(frames: Path = typer.Option(..., exists=True, file_okay=False), out: Path = typer.Option(...),
          camera_model: str = typer.Option(None), single_camera: bool = typer.Option(None)) -> None:
     cfg = load_config("recon")["sfm"]

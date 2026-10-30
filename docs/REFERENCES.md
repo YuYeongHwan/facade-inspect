@@ -119,7 +119,8 @@ Roboflow Universe 사용자 업로드 데이터셋 (저자 이름 없음 — "Pr
 - 저널: Scientific Reports, 12, Article 3229
 - 링크: https://doi.org/10.1038/s41598-022-07235-y
 - 사용 부분: 관련 연구 — 커튼월 유리의 먼지 밀도를 영상으로 추정해 청소 로봇에 쓰는 선행 사례. 밝기·배경에 민감한 문제
-  지적은 "유리에 고정된 패턴만 오염"(다시점 정렬) 설계 원칙의 배경. 코드에서 직접 쓴 식 없음
+  지적은 "유리에 고정된 패턴만 오염"(다시점 정렬) 설계 원칙의 배경. 코드에서 직접 쓴 식 없음.
+  인용 위치: docs/scoring.md §5 "오염 영역 검출과 유형 분류", contamination/analyze.py 모듈 설명
 
 ## 모델·라이브러리·도구
 
@@ -212,6 +213,23 @@ Roboflow Universe 사용자 업로드 데이터셋 (저자 이름 없음 — "Pr
 - 사용 부분: 자동 비행 설계 (`flight/`, `docs/hardware/`)에서 FC 하드웨어 참고
   - [R18-a] https://www.radiolink.com/crossrace — APM(ArduPilot) 기반, TELEM 포트 구성 (TELEM2 텔레메트리, TELEM3 GPS 등)
   - [R18-b] https://www.radiolink.com/crossrace_manual — Mavlink UART 2개 (TELEM1·2 사용자 지정 시리얼), Guided 모드 (3.7.8절)
+
+### [R31] ECC 영상 정렬 (Enhanced Correlation Coefficient)
+- 저자: Georgios D. Evangelidis, Emmanouil Z. Psarakis
+- 연도: 2008
+- 제목: Parametric Image Alignment Using Enhanced Correlation Coefficient Maximization. IEEE TPAMI, 30(10), 1858–1865.
+  https://doi.org/10.1109/TPAMI.2008.113
+- 구현: OpenCV `cv2.findTransformECC` (MOTION_HOMOGRAPHY, inputMask)
+- 사용 부분: 다시점 오염 분석에서 같은 창문의 정면화 관측들을 호모그래피로 정밀 정렬 — 상관은 창틀 띠에서만
+  (`cv/facade_cv/contamination/multiview.py` `ecc_align`, `config/contamination.yaml` multiview, docs/scoring.md §5 다시점 모드)
+
+### [R32] LSD 직선 검출 (Line Segment Detector)
+- 저자: Rafael Grompone von Gioi, Jérémie Jakubowicz, Jean-Michel Morel, Gregory Randall
+- 연도: 2010
+- 제목: LSD: A Fast Line Segment Detector with a False Detection Control. IEEE TPAMI, 32(4), 722–732.
+  https://doi.org/10.1109/TPAMI.2008.300
+- 구현: OpenCV `cv2.createLineSegmentDetector`
+- 사용 부분: 단일 이미지 반사 의심 규칙의 긴 직선 밀도 (`analyze.py` `scene_structure`, `config/contamination.yaml` reflection)
 
 ## 색차·평가 일치도 (CSI 심각도·보정)
 

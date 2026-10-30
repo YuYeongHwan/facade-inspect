@@ -91,6 +91,15 @@ class Contamination(_Model):
     severity: Severity  # k_s
     delta_e: float | None = Field(ge=0)  # 깨끗한 유리 대비 ΔE*ab (기준 유리가 부족하면 null → severity = max)
     polygon: list[UV] = Field(min_length=3)
+    area_px: int | None = Field(None, ge=0)  # A_j (분석 해상도 픽셀, T7)
+    k_t: float | None = None  # 계산에 쓴 종류 가중치 (= meta.csi_params.weights[type])
+
+
+class ReflectionSuspect(_Model):
+    """반사 의심 영역 (넓고 윤곽·직선이 많음 — 비친 나무·건물). CSI에 넣지 않고 따로 표시만 한다."""
+
+    area_ratio: Ratio  # 면적 / A_g
+    polygon: list[UV] = Field(min_length=3)
 
 
 class TypeRatios(_Model):
@@ -122,6 +131,13 @@ class Window(_Model):
     type_ratios: TypeRatios | None
     images: WindowImages
     num_views: int = Field(ge=0)
+    # T7 오염 분석 부가 정보 (없으면 null — 이전 result.json 호환)
+    glass_area_px: int | None = Field(None, ge=0)  # A_g (분석 해상도 픽셀)
+    raw_coverage_pct: float | None = Field(None, ge=0, le=100)  # Σ A_j / A_g × 100 (배수 없음)
+    weighted_coverage_pct: float | None = Field(None, ge=0)  # CSI × k_s_max × k_t_max × 100 = Σ 면적비 × k_s × k_t × 100 (%, 최대 k_s_max×k_t_max×100)
+    low_confidence: bool | None = None  # 단일 이미지 분석 (다시점으로 반사를 거르지 못함)
+    analysis_mode: Literal["multi", "single"] | None = None
+    reflection_suspects: list[ReflectionSuspect] | None = None  # CSI에서 뺀 반사 의심 영역
 
     @model_validator(mode="after")
     def _check(self) -> "Window":

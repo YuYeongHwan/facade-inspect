@@ -4,6 +4,7 @@ import { Html, Line, OrbitControls, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { type ComponentRef, type RefObject, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { LOW_CONF_HATCH } from "@/components/ui";
 import { inspectionAssetUrl } from "@/lib/api";
 import { filterStyle, LEVEL_STYLES, UNANALYZED_STYLE } from "@/lib/palette";
 import {
@@ -35,6 +36,29 @@ function quadGeometry(pts: THREE.Vector3[], uv = false): THREE.BufferGeometry {
   if (uv) g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
   g.computeVertexNormals();
   return g;
+}
+
+/** 단일 이미지(신뢰도 낮음) 패널 빗금 — 대각선 줄무늬 alphaMap (모든 패널이 공유) */
+let hatchTexture: THREE.CanvasTexture | null = null;
+function getHatch(): THREE.CanvasTexture {
+  if (hatchTexture) return hatchTexture;
+  const c = document.createElement("canvas");
+  c.width = c.height = 32;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#555"; // 줄 사이도 옅게 보이게
+  g.fillRect(0, 0, 32, 32);
+  g.strokeStyle = "#fff";
+  g.lineWidth = 6;
+  for (let k = -32; k <= 64; k += 16) {
+    g.beginPath();
+    g.moveTo(k, 0);
+    g.lineTo(k + 32, 32);
+    g.stroke();
+  }
+  hatchTexture = new THREE.CanvasTexture(c);
+  hatchTexture.wrapS = hatchTexture.wrapT = THREE.RepeatWrapping;
+  hatchTexture.repeat.set(3, 3);
+  return hatchTexture;
 }
 
 type Panel = { window: Window; corners: THREE.Vector3[]; center: THREE.Vector3; normal: THREE.Vector3; size: number };
@@ -98,7 +122,8 @@ function WindowPanel({
   onHover: (id: string | null) => void;
   onSelect: (id: string) => void;
 }) {
-  const geom = useMemo(() => quadGeometry(panel.corners), [panel]);
+  const geom = useMemo(() => quadGeometry(panel.corners, true), [panel]);
+  const low = !!panel.window.low_confidence && panel.window.cleaning_level !== null;
   const color = filterStyle(levelOf(panel.window)).color;
   const urgent = panel.window.cleaning_level === 5; // 우선 청소는 평소에도 진하고 굵게
   const id = panel.window.id;
@@ -120,6 +145,7 @@ function WindowPanel({
           color={color}
           transparent
           opacity={active || urgent ? 0.9 : 0.55}
+          alphaMap={low ? getHatch() : null}
           side={THREE.DoubleSide}
           depthWrite={false}
           toneMapped={false}
@@ -129,6 +155,9 @@ function WindowPanel({
         points={[...panel.corners, panel.corners[0]]}
         color={active ? "#ffffff" : color}
         lineWidth={active ? 3 : urgent ? 2.5 : 1}
+        dashed={low}
+        dashSize={panel.size * 0.06}
+        gapSize={panel.size * 0.04}
       />
     </group>
   );
@@ -240,6 +269,9 @@ export default function BuildingViewer({
               <span className="ml-2 font-bold" style={{ color: filterStyle(levelOf(hovered.window)).color }}>
                 {hovered.window.cleaning_level ?? ""} {hovered.window.cleaning_label}
               </span>
+              {hovered.window.low_confidence && hovered.window.cleaning_level !== null && (
+                <span className="ml-2 text-amber-300">신뢰도 낮음 (단일 이미지)</span>
+              )}
             </div>
           </Html>
         )}
@@ -257,13 +289,16 @@ export default function BuildingViewer({
       >
         전체 보기
       </button>
-      <Legend unanalyzed={result.windows.some((w) => w.cleaning_level === null)} />
+      <Legend
+        unanalyzed={result.windows.some((w) => w.cleaning_level === null)}
+        lowConfidence={result.windows.some((w) => w.low_confidence && w.cleaning_level !== null)}
+      />
     </div>
   );
 }
 
 /** 패널 색 범례: level · 라벨 · CSI 구간 (높은 level이 위). 미분석 창문이 있으면 맨 아래 회색. */
-function Legend({ unanalyzed }: { unanalyzed: boolean }) {
+function Legend({ unanalyzed, lowConfidence }: { unanalyzed: boolean; lowConfidence: boolean }) {
   return (
     <ul className="pointer-events-none absolute bottom-3 left-3 hidden space-y-1 rounded-md border border-neutral-800 bg-neutral-900/85 px-2.5 py-2 text-xs sm:block">
       {LEVELS.toReversed().map((lv) => {
@@ -279,6 +314,12 @@ function Legend({ unanalyzed }: { unanalyzed: boolean }) {
           </li>
         );
       })}
+      {lowConfidence && (
+        <li className="flex items-center gap-2 text-amber-300">
+          <span className="h-3 w-3 rounded-sm border border-dashed border-neutral-300" style={{ backgroundImage: LOW_CONF_HATCH }} />
+          <span>빗금 = 신뢰도 낮음 (단일 이미지)</span>
+        </li>
+      )}
       {unanalyzed && (
         <li className="flex items-center gap-2 text-neutral-400">
           <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: UNANALYZED_STYLE.color }} />

@@ -75,7 +75,12 @@ export const Contamination = z.strictObject({
   severity: z.number().int().min(1).max(3), // k_s
   delta_e: z.number().min(0).nullable(), // 깨끗한 유리 대비 ΔE*ab
   polygon: z.array(UV).min(3),
+  area_px: NonNegInt.nullish(), // A_j (분석 해상도 픽셀, T7)
+  k_t: z.number().nullish(), // 계산에 쓴 종류 가중치
 });
+
+// 반사 의심 영역 (넓고 윤곽·직선이 많음 — 비친 나무·건물). CSI에 넣지 않고 따로 표시만 한다
+export const ReflectionSuspect = z.strictObject({ area_ratio: Ratio, polygon: z.array(UV).min(3) });
 
 export const TypeRatios = z.strictObject({ dust: Ratio, stain: Ratio, grime: Ratio, heavy: Ratio });
 
@@ -100,6 +105,13 @@ export const Window = z
     type_ratios: TypeRatios.nullable(),
     images: WindowImages,
     num_views: NonNegInt,
+    // T7 오염 분석 부가 정보 (없으면 null — 이전 result.json 호환)
+    glass_area_px: NonNegInt.nullish(), // A_g (분석 해상도 픽셀)
+    raw_coverage_pct: z.number().min(0).max(100).nullish(), // Σ A_j / A_g × 100 (배수 없음)
+    weighted_coverage_pct: z.number().min(0).nullish(), // CSI × k_s_max × k_t_max × 100 = Σ 면적비 × k_s × k_t × 100 (%)
+    low_confidence: z.boolean().nullish(), // 단일 이미지 분석
+    analysis_mode: z.enum(["multi", "single"]).nullish(),
+    reflection_suspects: z.array(ReflectionSuspect).nullish(), // CSI에서 뺀 반사 의심 영역
   })
   .superRefine((w, ctx) => {
     const m = WINDOW_ID_RE.exec(w.id)?.groups;

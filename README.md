@@ -63,7 +63,13 @@ uv run --project cv python -m facade_cv.detect.predict --images runs/<id>/frames
 uv run --project cv python -m facade_cv.detect.run --frames runs/<id>/frames --debug  # 또는 --image X.jpg
 uv run --project cv python -m facade_cv.rectify.homography --image X.jpg           # 이미지 전체 정면화
 uv run --project cv python -m facade_cv.contamination.grade 0.03                  # CSI → "3 가급적 청소"
+uv run --project cv python -m facade_cv.contamination.analyze run runs/<id>       # 오염 분석 (result.json 갱신, 아래 "오염 영역 검출")
+uv run --project cv python -m facade_cv.contamination.analyze image X.jpg --out runs/x   # 사진 1장 = 유리 전체
+uv run --project cv python -m facade_cv.contamination.analyze photos --images data/own/dirty_windows --out runs/demo_<이름>
+uv run --project cv python -m facade_cv.contamination.evaluate t7                 # t7_dev 30장 평가 → runs/t7_dev/ (--labels 오염 polygon json → IoU)
+uv run --project cv python -m facade_cv.contamination.evaluate calib              # csi_calib 블라인드 평가지 → runs/csi_calib/sheet.html
 uv run --project cv python -m facade_cv.recon3d.run --frames runs/<id>/frames --detections runs/<id>/detect --out runs/<id> --debug
+#   기존 run에 recon/window_obs.json만 다시 만들 때: 같은 명령 + --reuse-sfm (저장된 COLMAP 모델 재사용, SfM 생략)
 uv run --project cv python -m facade_cv.io.source --probe                         # 웹캠 장치 번호 (아이폰 연속성 카메라 포함)
 uv run --project cv python -m facade_cv.live.run --source webcam:0 --debug        # 실시간 검출 (아래 "실시간")
 ```
@@ -314,4 +320,24 @@ uv run --project cv python -m facade_cv.contamination.calibrate fit --regions ru
 crop에 오염 영역을 심각도별 색차로 그린 뒤 `contamination/grade.py` `grade_window`로 실제 측정해 CSI·level을 매긴다
 (유리 면적 = 창틀 마진·가림 제외, 영역별 ΔE → 심각도). 계산에 쓴 값은 `meta.csi_params`.
 `cv/tests/test_schema.py`가 같은 result.json을 pydantic과 web zod(`web/scripts/validate-result.mjs`) 양쪽으로 검증한다.
+## 오염 영역 검출·유형 분류 (facade_cv.contamination.analyze) — T7
+
+규칙 기반 (학습 없음), 설정 `config/contamination.yaml`, 설명·한계·튜닝 기록은 [docs/scoring.md](docs/scoring.md) "오염 영역 검출과 유형 분류".
+정면화 창문 → 유리 (창틀 마진·가림 제외) → 창틀·창살 막대(행·열 투영, 경계 날카로운 것만) 제거 → 칸별 배경 곡면 대비 ΔE / 국소 ΔE 후보 →
+반사광·물기 제외 (작고 날카로운 흰 덩어리는 새똥으로 남김) → 흩어진 점 묶기 → 반사 의심 분리 → 유형 규칙 (heavy → grime → stain → dust) → ΔE → k_s → `grade.compute_csi` → level.
+
+- **다시점 모드** (`analysis_mode="multi"`, `multiview.py`): 창문의 관측 프레임들을 정면화 → ECC [R31] 정렬(창틀 띠 기준) → 픽셀별 중앙값을 분석하고,
+  시점마다 바뀌는 픽셀(반사·실내)은 후보에서 뺀다. 관측 < 3 · ECC 실패 · 정렬 불량이면 **단일 모드**(가장 큰 관측 1장, `low_confidence=true`)
+- `run`: `recon/window_obs.json`(창문별 프레임·4코너)이 있으면 원본 프레임에서, 없으면 정사영 crop(저해상도) — 경고 기록.
+  `--single`이면 다시점을 쓰지 않는다. 짧은 변 < `rectify.min_side`(64px)인 창은 미분석으로 남긴다.
+  b04 (148창): 다중 31 · 단일 114 · 미분석 3, 창당 80 ms — 단일 대비 비교 `runs/t7_b04/compare_single_multi.md`
+- `photos`: 사진 폴더 → T4 창문 검출 → 사진 1장 = 가상 외벽 1개 → `runs/demo_<이름>/result.json` (웹에서 b04와 같은 화면, 3D 복원 아님)
+- 출력: 창문별 `crop.jpg`(정면화 고해상도로 교체)·`heatmap.png`(ΔE)·`overlay.png`(유형 색), result.json에
+  `area_px`·`k_t`(영역), `glass_area_px`·`raw_coverage_pct`·`weighted_coverage_pct`·`low_confidence`·`analysis_mode`·`reflection_suspects`(창문) — 모두 optional
+- 웹: 상세 첫 줄 "오염 면적 12% · 3단계 가급적 청소" (가중 면적률·CSI 분해는 "상세"), 반사 의심 = 노란 점선.
+  단일 모드(신뢰도 낮음) 창은 배지·3D 패널에 빗금 + "?", 요약 막대에 "분석 방식: 다시점 N · 단일 M"
+- 검증: `pytest cv/tests/test_contamination.py` (합성 얼룩·흰 덩어리·반사·다시점), `evaluate t7` (t7_dev 30장, `runs/t7_dev/summary.md`)
+- 보정 준비: `evaluate calib` → `runs/csi_calib/` (images/·regions.json·sheet.html은 평가용, pred.csv·key.csv는 평가자에게 주지 않음).
+  평가자 csv를 `data/ratings/`에 두고 `calibrate fit --regions runs/csi_calib/regions.json`. 이 결과로 contamination.yaml을 고치지 않는다
+
 `result.json` 안의 경로는 모두 `fixtures/` 기준 상대경로다.

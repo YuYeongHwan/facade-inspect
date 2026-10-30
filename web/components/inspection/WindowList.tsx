@@ -95,7 +95,7 @@ export default function WindowList({
               <span className="flex-1 truncate font-mono text-xs">{w.id}</span>
               <span className="w-10 text-right tabular-nums text-neutral-400">{w.row}층</span>
               <span className="flex w-24">
-                <LevelBadge level={w.cleaning_level} />
+                <LevelBadge level={w.cleaning_level} lowConfidence={!!w.low_confidence} />
               </span>
               <span className="w-14 text-right tabular-nums">{w.csi === null ? "—" : w.csi.toFixed(3)}</span>
             </button>

@@ -6,12 +6,15 @@ python -m facade_cv.recon3d.run --frames runs/<id>/frames --detections runs/<id>
   result.json, building.glb, facades/<F>.jpg, windows/<id>/crop.jpg
   recon/colmap/      COLMAP database·sparse 모델
   recon/report.json  등록률·미등록 프레임·평면·extra 평면·창문 통계·경고·단계별 시간
+  recon/window_obs.json  창문별 원본 프레임 관측 (프레임·4코너·가림) — 오염 분석(T7) 입력
+--reuse-sfm: recon/colmap의 SfM 모델을 다시 읽어 SfM(가장 오래 걸림)을 건너뛴다
   debug/recon/       --debug: points_planes.ply (평면별 색), cameras.ply (궤적, 파랑→빨강 = 시간순),
                      top_view.jpg (위에서 본 포인트·평면·외벽·카메라 궤적), <F>_windows.jpg (텍스처 위 창문 ID)
 SfM 실패·등록률 부족·외벽 평면 0개면 degrade 모드 (가상 평면 1개 + T4 2D row/col). meta.recon_status에 기록.
 """
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -27,7 +30,7 @@ from facade_cv.recon3d.geometry import UP, CameraView, FacadeFrame
 from facade_cv.recon3d.mesh import build_mesh
 from facade_cv.recon3d.ortho import build_textures, rect_to_px
 from facade_cv.recon3d.planes import FacadeResult, detect_planes, extract_facades, remove_outliers, scene_scale
-from facade_cv.recon3d.sfm import SfmResult, run_sfm
+from facade_cv.recon3d.sfm import SfmResult, load_sfm, run_sfm
 from facade_cv.recon3d.up_axis import align_rotation, estimate_up, path_straightness, refine_up
 from facade_cv.recon3d.windows3d import (
     Window3D,
@@ -143,9 +146,23 @@ def write_debug(debug: Path, points: np.ndarray, colors: np.ndarray, fr: FacadeR
         cv2.imwrite(str(debug / f"{f.id}_windows.jpg"), draw_facade_windows(tex, f, ppu, windows))
 
 
+def write_window_obs(out: Path, frames: Path, windows: list[Window3D], det: dict) -> None:
+    """recon/window_obs.json — 창문 ID별 원본 프레임 관측 (프레임 이름, 4코너, 가림 polygon). 오염 분석(T7)이
+    원본 해상도·다시점으로 창문을 다시 정렬할 때 쓴다. frames는 out 기준 상대경로."""
+    occ = {(img["image"], tuple(np.round(w["corners"], 1).ravel())): w.get("occlusion", [])
+           for img in det["images"] for w in img["windows"]}
+    obs = {w.id: [{"frame": o.obs.frame, "corners": np.round(o.obs.corners, 2).tolist(),
+                   "occlusion": occ.get((o.obs.frame, tuple(np.round(o.obs.corners, 1).ravel())), [])}
+                  for o in w.observations] for w in windows}
+    (out / "recon").mkdir(parents=True, exist_ok=True)
+    (out / "recon" / "window_obs.json").write_text(json.dumps(
+        {"frames": os.path.relpath(Path(frames).resolve(), out.resolve()), "windows": obs}, ensure_ascii=False),
+        encoding="utf-8")
+
+
 def run_recon(frames: str | Path, detections: str | Path, out: str | Path, debug: bool = False,
-              cfg: dict | None = None) -> dict:
-    """report (recon/report.json 내용)를 반환."""
+              cfg: dict | None = None, reuse_sfm: bool = False) -> dict:
+    """report (recon/report.json 내용)를 반환. reuse_sfm: out/recon/colmap의 기존 SfM 모델을 다시 읽는다."""
     cfg = cfg or load_config("recon")
     frames, out = Path(frames), Path(out)
     det_path = Path(detections)
@@ -164,7 +181,7 @@ def run_recon(frames: str | Path, detections: str | Path, out: str | Path, debug
     report: dict = {"frames": str(frames), "detections": str(det_path)}
     sfm: SfmResult | None = None
     try:
-        sfm = run_sfm(frames, work / "colmap", cfg["sfm"])
+        sfm = load_sfm(frames, work / "colmap") if reuse_sfm else run_sfm(frames, work / "colmap", cfg["sfm"])
         report["sfm"] = sfm.report()
         if sfm.num_models > 1 and sfm.unregistered:
             warnings.append(f"sfm_split: {sfm.num_models} separate models, used the largest "
@@ -246,6 +263,7 @@ def run_recon(frames: str | Path, detections: str | Path, out: str | Path, debug
               "registered_ratio": None if sfm is None else round(sfm.registered_ratio, 4), "warnings": warnings}
     meta = _video_meta(frames, len(cameras) if cameras else 1)
     result = export_result(out, out.name, meta, body, facades, textures, windows, status, cfg["ortho"]["jpeg_quality"])
+    write_window_obs(out, frames, windows, det)
     lap("export")
     if debug:
         write_debug(out / "debug" / "recon", points, colors, fr, facades, cameras, textures, windows)
@@ -263,13 +281,14 @@ def main(
     debug: bool = False,
     camera_model: str = typer.Option(None, help="config sfm.camera_model 덮어쓰기 (SIMPLE_RADIAL, OPENCV_FISHEYE …)"),
     single_camera: bool = typer.Option(None, help="config sfm.single_camera 덮어쓰기 (손떨림 보정 영상은 --no-single-camera)"),
+    reuse_sfm: bool = typer.Option(False, help="<out>/recon/colmap의 기존 SfM 모델 재사용 (SfM 생략)"),
 ) -> None:
     cfg = load_config("recon")
     if camera_model:
         cfg["sfm"]["camera_model"] = camera_model
     if single_camera is not None:
         cfg["sfm"]["single_camera"] = single_camera
-    r = run_recon(frames, detections, out, debug, cfg)
+    r = run_recon(frames, detections, out, debug, cfg, reuse_sfm)
     sfm = r.get("sfm", {})
     print(f"mode={r['mode']} mesh={r['mesh_kind']} facades={len(r['facades'])} windows={r['num_windows']} "
           f"registered={sfm.get('num_registered')}/{sfm.get('num_input')} total={r['total_sec']}s → {out}")

@@ -104,3 +104,23 @@ def test_fixture_csi_matches_config_and_occlusion():
     assert r.meta.csi_params.model_dump() == csi_params()
     assert sum(w.occluded_ratio > 0 for w in r.windows) >= 2
     assert all(0 <= w.csi <= 1 for w in r.windows)
+
+
+def test_t7_optional_fields(tmp_path):
+    """T7 부가 필드(area_px, k_t, glass_area_px, weighted_coverage_pct, low_confidence, analysis_mode)는 optional:
+    없어도(이전 결과) 있어도 pydantic·zod 모두 통과하고, 잘못된 analysis_mode는 거부."""
+    data = json.loads((FIXTURES / "result.json").read_text())
+    w = data["windows"][0]
+    w.update(glass_area_px=1000, raw_coverage_pct=4.2, weighted_coverage_pct=13.3, low_confidence=True, analysis_mode="single")
+    for c in w["contamination"]:
+        c.update(area_px=10, k_t=0.5)
+    r = InspectionResult.model_validate(data)
+    assert r.windows[0].analysis_mode == "single" and r.windows[1].analysis_mode is None
+    if shutil.which("node") and (WEB / "node_modules/zod").exists():
+        p = tmp_path / "result.json"
+        p.write_text(r.model_dump_json())
+        out = subprocess.run(["node", "scripts/validate-result.mjs", str(p)], cwd=WEB, capture_output=True, text=True)
+        assert out.returncode == 0, out.stderr
+    w["analysis_mode"] = "video"
+    with pytest.raises(ValidationError):
+        InspectionResult.model_validate(data)

@@ -18,6 +18,7 @@
 | Roboflow dirty window v1 | Roboflow Universe `project-novx2` [R26] <br> https://universe.roboflow.com/project-novx2/dirty-window | CC BY 4.0 | 366 (train 254 / valid 112), 장면 366 | t7_dev 2 + csi_calib 25 (**평가만, 학습 미사용**) | `data/public/dirty_windows/dirty-window` |
 | Roboflow window check v3 | Roboflow Universe `dirty-window` [R27] <br> https://universe.roboflow.com/dirty-window/window-check | CC BY 4.0 | 865 (train 798 / valid 67), 고유 장면 ≈53 | t7_dev 16 + csi_calib 16 (평가만) | `data/public/dirty_windows/window-check` |
 | Roboflow window check2 v2 | Roboflow Universe `dirty-window` [R28] <br> https://universe.roboflow.com/dirty-window/window-check2 | CC BY 4.0 | 263 (train 243 / valid 20), 고유 장면 ≈45 | t7_dev 7 + csi_calib 4 (평가만) | `data/public/dirty_windows/window-check2` |
+| Wikimedia Commons 공개 오염 유리 사진 | Commons 개별 업로더 [R33] <br> `data/own/dirty_windows/web/SOURCES.csv` | 사진마다 다름 (CC0 / CC BY / CC BY-SA) | 16 (heavy 5, dust 4, grime 3, stain 1, wet_glass 2, clean 1) | 16 (**사진 데모 `runs/demo_web`·T7 정성 검증만, 학습 미사용**) | `data/own/dirty_windows/web` |
 | 오염 창문 근접 사진 (자체 촬영, **예정**) | 직접 촬영 10~20장 | 자체 소유 | — | T7 검증·CSI 보정 (예정) | `data/own/dirty_windows/` |
 | b01_songsan (자체 촬영) | 2026-10-07, 지상 정지 촬영, 맑음 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b01_songsan` |
 | b02_smilen (자체 촬영) | 2026-10-07, 지상, 올려다보는 각도 | 자체 소유 | 영상 1개 | 0 (학습 미사용) | `data/raw/videos/b02_smilen` |
@@ -173,3 +174,10 @@ CMP에서 창문이 빠지는 경우: PNG에서 balcony/deco/shop에 완전히 �
       고르게 분포시키려고 붙인 값일 뿐이다 → **사람 3명의 평가로 대체 예정, 보정 정답으로 사용 금지**
       (보정 정답은 `contamination/calibrate.py rate`로 모은 평가의 합의값)
 - 직접 촬영 오염 창문 사진 10~20장 **예정**: `data/own/dirty_windows/` (공개 데이터에 부족한 국소 dirt·새똥·물때·외부 시점)
+
+### 공개 오염 유리 사진 16장 (사진 데모) [R33]
+- 수집 2026-11-01, Wikimedia Commons. 분류(heavy=새똥, dust, grime, stain, wet_glass·clean=음성 대조)는 수집자가 붙인 것이며 정답 라벨이 아니다 (`manifest.json`)
+- web_01~10은 원본, web_11~16은 원본이 429로 막혀 Commons 표준 1920px 썸네일로 받음 (`download.sh`)
+- 차 앞유리·유리 지붕 근접 사진이 많아 창문 검출이 안 된다 → `analyze photos --whole-image`로 사진 전체를 유리로 분석.
+  차체·배경도 유리로 계산되므로 CSI는 참고값이다
+- CC BY-SA 사진의 crop·오버레이를 배포하면 같은 라이선스로 공개해야 한다. 웹 결과 화면에 "공개 이미지 예시 · 출처"를 표시한다

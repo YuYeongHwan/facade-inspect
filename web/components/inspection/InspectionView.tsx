@@ -5,6 +5,7 @@ import { Status } from "@/components/ui";
 import { getInspection, listInspections } from "@/lib/api";
 import { LEVEL_FILTERS, type LevelFilter, levelOf } from "@/lib/types";
 import { useData } from "@/lib/useData";
+import { PHOTO_SOURCES, photoSourceOf } from "@/lib/photoSources";
 import BuildingViewer from "./BuildingViewer";
 import FacadeMap from "./FacadeMap";
 import SummaryBar from "./SummaryBar";
@@ -53,6 +54,7 @@ export default function InspectionView({ id }: { id: string }) {
     <div className={`flex flex-col lg:h-[calc(100dvh-3.5rem)] ${selected ? "lg:pr-[420px]" : ""}`}>
       {/* 상세 drawer(fixed, 420px)가 요약 막대·지도를 가리지 않도록 그 폭만큼 비운다 */}
       <SummaryBar result={result} source={source} visibleLevels={visibleLevels} onToggleLevel={toggleLevel} onSetLevels={setLevels} multiOnly={multiOnly} />
+      {PHOTO_SOURCES[result.meta.video] && <PhotoCredit video={result.meta.video} facadeId={selected?.facade_id ?? null} />}
       <div className="flex gap-1 border-b border-neutral-800 px-3 pt-2" role="tablist" aria-label="보기">
         {TABS.map((t) => (
           <button
@@ -120,5 +122,23 @@ export default function InspectionView({ id }: { id: string }) {
       </div>
       <WindowDetail inspectionId={id} window={selected} csiParams={result.meta.csi_params ?? null} onClose={close} />
     </div>
+  );
+}
+
+/** 사진 데모(공개 이미지) 결과의 출처 표시 [R33]. 선택한 창이 있으면 그 사진의 작성자·라이선스 */
+function PhotoCredit({ video, facadeId }: { video: string; facadeId: string | null }) {
+  const src = facadeId ? photoSourceOf(video, facadeId) : null;
+  return (
+    <p className="border-b border-neutral-800 px-4 py-1.5 text-xs text-neutral-400">
+      <span className="mr-2 rounded bg-neutral-800 px-1.5 py-0.5 font-semibold text-neutral-200">공개 이미지 예시 · 출처</span>
+      {src ? (
+        <>
+          {src.file} · {src.author} · {src.license} ·{" "}
+          <a href={src.page} target="_blank" rel="noreferrer" className="underline hover:text-neutral-200">Wikimedia Commons</a>
+        </>
+      ) : (
+        <>Wikimedia Commons {PHOTO_SOURCES[video].length}장 (사진마다 작성자·라이선스 다름) — 창을 누르면 그 사진의 출처를 표시합니다</>
+      )}
+    </p>
   );
 }

@@ -81,6 +81,31 @@ Roboflow Universe 사용자 업로드 데이터셋 (저자 이름 없음 — "Pr
 - 코드·가중치: https://github.com/facebookresearch/sam2 (Apache-2.0), Ultralytics 래퍼 `SAM("sam2.1_b.pt")` ([R8])
 - 사용 부분: 박스 프롬프트 → 마스크 (`box_to_seg_sam.py`. [R29]에 적용했으나 결과 미사용)
 
+### [R33] Wikimedia Commons 공개 오염 유리 사진 16장
+- 제공: Wikimedia Commons 개별 업로더 (아래 표). 수집 2026-11-01. 원본 페이지·작성자·라이선스는 `data/own/dirty_windows/web/SOURCES.csv`·`manifest.json`
+- 라이선스: CC0 / CC BY 2.0·3.0·4.0 / CC BY-SA 2.0·3.0·4.0 (사진마다 다름). CC BY-SA 사진을 가공(crop·오버레이)해 배포하면 같은 라이선스로 공개해야 한다
+- 사용 부분: **학습 미사용**. 사진 데모(`analyze photos --whole-image` → `runs/demo_web`)와 T7 정성 검증만. 웹·발표에서는 "공개 이미지 예시"로 표기하고 출처를 함께 밝힌다
+  (`web/lib/photoSources.ts`). web_11~16은 원본 대신 Commons 1920px 썸네일
+
+| 파일 | 분류 | 작성자 | 라이선스 | 원본 페이지 |
+|---|---|---|---|---|
+| web_01.jpg | heavy | Sergey Ashmarin | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Car_with_bird_droppings_-_Rome,_Italy_-_panoramio.jpg |
+| web_02.jpg | heavy | Atirador | CC BY 4.0 | https://commons.wikimedia.org/wiki/File:Shitty_Mazda.jpg |
+| web_03.jpg | heavy | Guillaume Vachey from Chalon sur Saone, France | CC0 | https://commons.wikimedia.org/wiki/File:Renault_Twingo_(46901672205).jpg |
+| web_04.jpg | heavy | XoMEoX | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Bird%27s_Art_(14971642117).jpg |
+| web_05.jpg | heavy | W.carter | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:Three_gulls_on_glass_ceiling,_Kampenhof_bus_terminal,_Uddevalla.jpg |
+| web_06.jpg | stain | Daniel Christensen | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Wells_Fargo_Center_dirty_windows.jpg |
+| web_07.jpg | dust | Nenad Stojkovic | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Dirty_back_car_window_-_49757773438.jpg |
+| web_08.jpg | grime | Dejan Krsmanovic | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:Old_Dark_and_Dirty_Window_(40343422273).jpg |
+| web_09.jpg | dust | Alexreavis | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Dusty_Window_View.JPG |
+| web_10.jpg | dust | Brylie | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Smoke_through_a_dusty_window.jpg |
+| web_11.jpg | dust | UncleVinny | CC BY 3.0 | https://commons.wikimedia.org/wiki/File:Eiffel_Tower,_dirty_bus_window_2_-_panoramio.jpg |
+| web_12.jpg | grime | rachel_bernadette | CC BY-SA 2.0 | https://commons.wikimedia.org/wiki/File:Though_the_dirty_window_-_Flickr_-_rachel_bernadette.jpg |
+| web_13.jpg | grime | Conall from Downpatrick, Northern Ireland | CC BY 2.0 | https://commons.wikimedia.org/wiki/File:The_back_window_of_the_palm_house_(52712743837).jpg |
+| web_14.jpg | wet_glass | Wuzur | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:Houses_and_cars_seen_through_a_rain-streaked_car_window.jpg |
+| web_15.jpg | wet_glass | Ashwini Sukhdeve | CC BY-SA 3.0 | https://commons.wikimedia.org/wiki/File:The_road_to_Lavasa,_seen_through_rain-streaked_glass.jpg |
+| web_16.jpg | clean | W.carter | CC BY-SA 4.0 | https://commons.wikimedia.org/wiki/File:East_part_of_glass_ceiling_in_Kampenhof_bus_terminal,_Uddevalla_1.jpg |
+
 ## 오염 점수·청소 우선순위
 
 ### [R2] Gaspar & de Brito — 외벽 열화 심각도 지수 (Severity of degradation)

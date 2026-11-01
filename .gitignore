@@ -3,6 +3,7 @@ data/*
 !data/eval/
 models/
 runs/
+runs_archive/
 .venv/
 node_modules/
 __pycache__/

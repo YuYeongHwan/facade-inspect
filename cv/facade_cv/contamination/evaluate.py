@@ -18,7 +18,7 @@ heavy(심한 오염) 분류의 박스는 사진 전체를 덮어 "박스 적중"
 rank: runs/csi_calib/images (평가자가 본 crop 그대로) 재분석 → CSI와 사람 합의 등급의 Spearman. 기본 split=fit 38장만 읽고,
   --grid로 준 값 조합은 5-fold 교차 검증 (fold마다 나머지 4/5에서 Spearman 최대 조합을 골라 남은 1/5에서 잰다).
   holdout은 --final로만 (격자 없이 현재 config 한 번, 경계값 그대로의 QWK·완전 일치율 + 오버레이) — 튜닝 중 사용 금지
-compare: 사전 등록 비교 (docs/scoring.md "사전 등록") M0 CSI · M1 CLIP p(dirty) · M2 α·z(CLIP)+(1−α)·z(CSI) — fit 교차 검증 → runs/prereg/fit.md.
+compare: 사전 등록 비교 (docs/scoring.md "사전 등록") M0 CSI · M1 CLIP p(dirty) · M2 α·z(CLIP)+(1−α)·z(CSI) — fit 교차 검증 → runs_archive/prereg/fit.md.
   --final: holdout 17장 1회 (holdout.md가 있으면 거부) → Spearman·부트스트랩 구간·fit 경계 QWK·채택 규칙 결과
 calib: data/eval/csi_calib.csv 60장 → 평가자 3명용 블라인드 평가지. 이 결과로 contamination.yaml 임계값을 고치지 않는다
 (보정은 grading.yaml k_t·level 경계만, calibrate fit). 평가 단위 = 분석한 이미지 그대로 (공개 사진은 전체,
@@ -562,7 +562,7 @@ a.download=n+".csv";a.click()}});count();
 @app.command()
 def rank(grid: list[str] = typer.Option([], help="튜닝 격자 'key=v1,v2' (콜론으로 묶은 키는 함께: 'a:b=x:1,y:2')"),
          set_: list[str] = typer.Option([], "--set", help="고정 덮어쓰기 'key=v'"),
-         out: Path = typer.Option(ROOT / "runs/t7v2/rank"),
+         out: Path = typer.Option(ROOT / "runs_archive/t7v2/rank"),
          overlays: bool = typer.Option(False, help="고른 조합으로 fit 오버레이 저장"),
          final: bool = typer.Option(False, "--final", help="holdout 17장 1회 (격자·덮어쓰기 없이 현재 config)")) -> None:
     """csi_calib 재분석 → CSI ↔ 사람 합의 Spearman (fit 교차 검증, holdout은 --final로만)."""
@@ -575,7 +575,7 @@ def rank(grid: list[str] = typer.Option([], help="튜닝 격자 'key=v1,v2' (콜
 
 
 @app.command()
-def compare(out: Path = typer.Option(ROOT / "runs/prereg"),
+def compare(out: Path = typer.Option(ROOT / "runs_archive/prereg"),
             final: bool = typer.Option(False, "--final", help="holdout 17장 1회 (사전 등록 커밋 후에만)")) -> None:
     """사전 등록 비교 M0 CSI · M1 CLIP · M2 결합 — fit 교차 검증 (기본) 또는 holdout 1회 (--final)."""
     print(run_compare_final(out) if final else run_compare(out))

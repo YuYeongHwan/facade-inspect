@@ -65,6 +65,17 @@ export default function WindowDetail({
         <div className="text-right">
           <div className="text-xs text-neutral-500">CSI</div>
           <div className="font-semibold tabular-nums">{w.csi === null ? "—" : w.csi.toFixed(3)}</div>
+          {w.clip_dirty != null && (
+            <div
+              className="mt-0.5 cursor-help text-[11px] text-neutral-400 underline decoration-dotted underline-offset-2"
+              title={
+                "AI(CLIP 제로샷)가 창문 사진 전체를 보고 매긴 '더러워 보이는 정도' 0~1. 등급에는 쓰지 않는 참고 점수.\n" +
+                "한계: 물방울·반사·실내 풍경도 더럽다고 판단할 수 있고, 오염 위치·면적은 알려주지 않는다."
+              }
+            >
+              AI 종합 오염도 <span className="tabular-nums">{w.clip_dirty.toFixed(2)}</span> (CLIP)
+            </div>
+          )}
         </div>
         <button
           type="button"

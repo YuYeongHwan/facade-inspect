@@ -73,9 +73,17 @@ mkdirSync(join(OUT, "inspections"), { recursive: true });
 mkdirSync(join(OUT, "detections"), { recursive: true });
 
 const FIXTURES = join(ROOT, "fixtures");
-const results = [join(FIXTURES, "result.json"), ...walk(join(ROOT, "runs"))].filter(
-  (p) => p.endsWith(`${sep}result.json`) && existsSync(p),
-);
+// 같은 inspection_id가 여러 곳이면 (실험 폴더 runs/<실험>/<id>/ 등) 경로가 가장 얕은 것만 — 나머지는 경고 후 건너뜀
+const seen = new Map();
+const results = [join(FIXTURES, "result.json"), ...walk(join(ROOT, "runs"))]
+  .filter((p) => p.endsWith(`${sep}result.json`) && existsSync(p))
+  .sort((a, b) => a.split(sep).length - b.split(sep).length)
+  .filter((p) => {
+    const id = JSON.parse(readFileSync(p, "utf8")).inspection_id;
+    if (!seen.has(id)) return seen.set(id, p);
+    console.warn(`건너뜀 (inspection_id ${id} 중복, ${relative(ROOT, seen.get(id))} 사용): ${relative(ROOT, p)}`);
+    return false;
+  });
 writeJson(
   join(OUT, "inspections/index.json"),
   results.map((p) => syncInspection(p, p.startsWith(FIXTURES + sep) ? "mock" : "run")),

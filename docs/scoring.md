@@ -261,7 +261,7 @@ demo_web level (heavy 새똥 web_01~05 / wet_glass 14·15 / clean 16, `--whole-i
 - 사람이 4~5단계로 본 CSI=0 이미지 (fit): img_009 1→2, img_022 1→3, img_053 1→2 — 방향은 맞지만 사람 등급에 못 미침.
   img_009의 흰 흐름 자국은 기존 반사광 규칙(밝고 무채색)에 제외된다
 - 사람 1단계 오검출: img_054 (실내 벽·창턱) 5→1 (큰 영역 규칙), img_001 (열린 창의 안쪽 창짝) 4→4 (곧은 막대 규칙이 일부만 제외),
-  img_008 (초록 번짐 반사) 4→4 (ΔC* 꺼짐). 오버레이 `runs/t7v2/overlays_fit.jpg`, 표 `runs/t7v2/stage*/rank.md`, `runs/t7v2/s*/`
+  img_008 (초록 번짐 반사) 4→4 (ΔC* 꺼짐). 오버레이 `runs_archive/t7v2/overlays_fit.jpg`, 표 `runs_archive/t7v2/stage*/rank.md`, `runs_archive/t7v2/s*/`
 - 실패 원인 (관찰): (1) 단일 사진에서 먼지막과 유리 뒤 풍경(안개·역광·흰 벽·벽돌 질감)이 구분되지 않는다 — veil은 무채색 밝은 면을,
   질감 밀도는 풍경 디테일을 먼지막으로 본다. (2) 반사 의심 예외는 새똥과 정반사 하이라이트(둘 다 날카롭고 흰 덩어리)를 구분하지 못한다.
   (3) 큰 국소 영역 규칙은 실제로 넓은 먼지(web_11 → 0)도 뺀다. (4) 38장·fold 7~8장이라 교차 검증 잡음이 크다 (fold별 −0.6 ~ +0.65)
@@ -286,7 +286,7 @@ CSI·level에는 영향이 없다 (참고 점수). open_clip이 없으면 (`uv s
 #### 사전 등록 (holdout 실행 전에 커밋, 2026-11-01)
 
 탐색 단계에서 CLIP을 fit 38장에 한 번 적용해 봤다 (ρ 0.37, CSI 0.07). 아래 규칙은 그 뒤, holdout 17장을 열기 전에 고정했다.
-holdout 17장은 이 규칙으로 **한 번만** 쓴다 (`python -m facade_cv.contamination.evaluate compare --final`, `runs/prereg/holdout.md`가 있으면 다시 실행 거부).
+holdout 17장은 이 규칙으로 **한 번만** 쓴다 (`python -m facade_cv.contamination.evaluate compare --final`, `runs_archive/prereg/holdout.md`가 있으면 다시 실행 거부).
 
 - **모델 3개**
   - M0: CSI (현재 config/contamination.yaml·grading.yaml 그대로)
@@ -302,7 +302,7 @@ holdout 17장은 이 규칙으로 **한 번만** 쓴다 (`python -m facade_cv.co
   아니면 M0 (CSI 등급) 유지 + CLIP은 참고 점수로 표시. (동점이면 단순한 쪽: M0 → M1 → M2)
 - 채택돼도 최종 등급에 무엇을 쓸지는 결과를 보고 따로 정한다 (그전까지 웹 등급은 CSI)
 
-fit 38장 결과 (`evaluate compare`, `runs/prereg/fit.md`):
+fit 38장 결과 (`evaluate compare`, `runs_archive/prereg/fit.md`):
 
 | 모델 | 교차 검증 ρ (fold 평균 ± sd) | out-of-fold 모은 ρ | in-sample ρ | in-sample 95% 구간 | 경계 4개 in-sample QWK |
 |---|---|---|---|---|---|
@@ -313,7 +313,7 @@ fit 38장 결과 (`evaluate compare`, `runs/prereg/fit.md`):
 M2 fold별 α [0.75, 0.5, 0.75, 0.75, 0.75] → holdout용 α = 0.75. M0·M1은 조정할 값이 없어 out-of-fold = in-sample.
 fold 7~8장이라 fold별 ρ가 −0.45 ~ +0.70으로 흔들린다.
 
-크롭 기준 p(dirty) (보조, `runs/prereg/`): t7_dev는 공개 근접 사진 = 사진 전체가 크롭, 깨끗한 창(CMP·b04)은 T4 검출 창 크롭들의 평균.
+크롭 기준 p(dirty) (보조, `runs_archive/prereg/`): t7_dev는 공개 근접 사진 = 사진 전체가 크롭, 깨끗한 창(CMP·b04)은 T4 검출 창 크롭들의 평균.
 demo_web은 `--whole-image` (사진 = 크롭), web_01~03은 앞유리 ROI 크롭도 같이.
 
 | t7_dev 분류 | 평균 | 이미지별 |
@@ -334,7 +334,23 @@ demo_web은 `--whole-image` (사진 = 크롭), web_01~03은 앞유리 ROI 크롭
 | wet_glass 14 15 | 0.37 0.37 | |
 | clean 16 | 0.00 | |
 
-holdout 결과: (실행 후 기록)
+holdout 결과 (사전 등록 커밋 83e1740 뒤 1회 실행, `runs_archive/prereg/holdout.md`):
+
+| 모델 | holdout ρ (17장) | 95% 구간 | QWK (fit 경계) | 완전 일치 |
+|---|---|---|---|---|
+| M0 CSI | 0.279 | [−0.23, 0.72] | 0.148 | 35% |
+| M1 CLIP | **0.375** | [−0.21, 0.73] | **0.630** | 41% |
+| M2 결합 (α 0.75) | 0.318 | [−0.24, 0.68] | 0.415 | 29% |
+
+**규칙에 따른 결과: M0 유지** — M1의 ρ가 가장 높지만 구간 하한 −0.21이 M0의 ρ 0.279보다 낮다. CLIP은 참고 점수로 표시한다.
+17장이라 세 구간이 모두 0을 포함하고 거의 겹친다 (모델 간 차이를 판정할 표본이 부족). 보조 지표 QWK는 CLIP이 높다 (0.63 vs 0.15).
+QWK 해석 (Landis & Koch [R25]): CLIP 0.63 = substantial (0.61–0.80), M2 0.42 = moderate, CSI 0.15 = slight (0.00–0.20).
+단 17장·경계는 fit 38장에서 정한 값이라 이 구간 판정도 불확실하다.
+
+**결정 (2026-11-01): 규칙대로 CSI 등급 유지, CLIP은 참고 점수 (웹 창문 상세 "AI 종합 오염도", 툴팁에 한계).**
+
+반성: 채택 규칙 (구간 하한 > M0)은 n=17에서 지나치게 엄격했다 — 17장 부트스트랩 구간 폭이 ±0.5 안팎이라 어떤 모델도 넘기 어렵다.
+holdout은 이제 쓴 데이터다. 다음 비교는 새 평가 데이터로, 표본을 늘려 (구간 폭을 보고 장수를 정해) 규칙을 다시 사전 등록한다.
 
 ## 보정
 

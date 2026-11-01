@@ -219,6 +219,58 @@ CSI의 입력(영역별 A_j·종류·ΔE)을 정면화 창문 이미지에서 �
 6. **유형 규칙은 모양만 본다**: 같은 모양의 dust·stain은 구분하지 못하고, 분류 오차는 k_t를 통해 CSI에 그대로 전파된다 (§4-5)
 7. t7_dev는 30장, 대부분 근접·실내 시점 공개 사진이라 드론 원거리 외부 시점 성능을 대표하지 않는다
 
+### T7 2차 — 단일 이미지 규칙 개선 시도 (2026-11-01, **채택하지 않음**)
+
+**결론: 단일 이미지 규칙 기반 판정은 사람 평가와 상관이 낮고 (교차 검증 ρ ≈ 0.1), 개선 시도 3종 모두 과적합이었다.
+→ 같은 위치의 깨끗한 기준 사진과 비교하는 방식(`analyze photos --reference`)으로 전환한다.** 시도한 코드는 꺼 둔 채(null/false) 남겼다.
+
+평가 규칙 (과적합 방지): 주 지표 = CSI와 사람 합의 등급(csi_calib, 평가자 3명)의 Spearman. csi_calib fit 38장만 쓰고
+새 값은 5-fold 교차 검증 (fold마다 나머지 4/5에서 고른 값을 남은 1/5에서 잼, `evaluate rank`). **holdout 17장은 보지 않았다**
+(`--final`로만 열리게 잠금, 이번엔 실행하지 않음 — 다음 버전 검증용으로 남김). 보조 = t7_dev 표, 공개 사진 demo_web 16장.
+
+| 단계 | 시도 | 교차 검증 ρ (fold 평균 ± sd) | out-of-fold 모은 ρ | in-sample ρ (38장) |
+|---|---|---|---|---|
+| 기준선 | T7 1차 그대로 | 0.083 ± 0.43 | 0.068 | 0.068 |
+| 1 | 먼지막 film: veil (어두운 채널 사전 [R34]) 또는 미세 질감 밀도 — 덮인 비율만큼 dust 영역 | 0.089 ± 0.42 | 0.036 | 0.251 |
+| 1+2 | + 곧은 막대만 제외 (LSD [R32]) · 채도 상승 번짐 반사 의심 (ΔC*) · 큰 국소 영역 반사 의심 (81조합) | 0.113 ± 0.31 | 0.079 | 0.378 |
+| 1+2+3 | + 반사 의심 예외 (날카롭고 흰 덩어리 = 새똥) | 1+2와 같음 (fit 38장 CSI 변화 없음) | | 0.378 |
+
+1+2에서 38장 전체로 고른 값: film veil ≥ 0.7, 곧은 막대 line_span 0.7, 큰 영역 0.3, ΔC* 끔 (교차 검증이 고르지 않음 → 계획대로 폐기).
+in-sample은 0.07 → 0.38로 올랐지만 교차 검증은 0.08 → 0.11 — 38장에 맞춘 것이다.
+
+t7_dev (박스 적중 dirt / stain, 박스 안 오검출 glare / wet, 깨끗한 창 level≤2):
+
+| 단계 | dirt | stain | glare | wet | clean ≤2 |
+|---|---|---|---|---|---|
+| 기준선 | 0.72 | 0.70 | 0.07 | 0.05 | 0.57 |
+| 1 (texture 15) | 0.90 | 1.00 | 0.12 | 0.25 | 0.02 |
+| 1+2 | 0.50 | 0.80 | 0.12 | 0.13 | 0.44 |
+| 1+2+3 (면적 상한 없음) | 0.93 | 1.00 | 0.47 | 0.29 | 0.27 |
+| 1+2+3 (예외 면적 상한 30%) | 0.93 | 1.00 | 0.47 | 0.29 | 0.27 |
+
+demo_web level (heavy 새똥 web_01~05 / wet_glass 14·15 / clean 16, `--whole-image`):
+
+| 단계 | heavy 01 02 03 04 05 | wet 14 15 | clean 16 |
+|---|---|---|---|
+| 기준선 | 2 1 3 1 2 | 1 2 | 1 |
+| 1 | 4 2 4 3 3 | 3 4 | 2 |
+| 1+2 | 1 1 2 3 4 | 2 5 | 1 |
+| 1+2+3 + 앞유리 ROI (web_01~03) | 3 5 1 5 5 | 3 5 | 2 |
+
+- heavy 유형 영역은 모든 단계에서 web_05 (0.3%)뿐. 새똥 사진의 level이 오른 것은 film·dust 면적 때문이다. web_15(물기)가 4~5단계로 새 오검출
+- 사람이 4~5단계로 본 CSI=0 이미지 (fit): img_009 1→2, img_022 1→3, img_053 1→2 — 방향은 맞지만 사람 등급에 못 미침.
+  img_009의 흰 흐름 자국은 기존 반사광 규칙(밝고 무채색)에 제외된다
+- 사람 1단계 오검출: img_054 (실내 벽·창턱) 5→1 (큰 영역 규칙), img_001 (열린 창의 안쪽 창짝) 4→4 (곧은 막대 규칙이 일부만 제외),
+  img_008 (초록 번짐 반사) 4→4 (ΔC* 꺼짐). 오버레이 `runs/t7v2/overlays_fit.jpg`, 표 `runs/t7v2/stage*/rank.md`, `runs/t7v2/s*/`
+- 실패 원인 (관찰): (1) 단일 사진에서 먼지막과 유리 뒤 풍경(안개·역광·흰 벽·벽돌 질감)이 구분되지 않는다 — veil은 무채색 밝은 면을,
+  질감 밀도는 풍경 디테일을 먼지막으로 본다. (2) 반사 의심 예외는 새똥과 정반사 하이라이트(둘 다 날카롭고 흰 덩어리)를 구분하지 못한다.
+  (3) 큰 국소 영역 규칙은 실제로 넓은 먼지(web_11 → 0)도 뺀다. (4) 38장·fold 7~8장이라 교차 검증 잡음이 크다 (fold별 −0.6 ~ +0.65)
+- 꺼 둔 설정: `film.enabled: false`, `candidate.line_straight: false`, `candidate.max_region_ratio: null`, `reflection.min_chroma_gain: null`,
+  `glare.keep_sharp.reflection_exception: false` (config/contamination.yaml)
+- 남긴 도구: `evaluate rank` (holdout 잠금), `analyze photos --roi` (사진별 유리 ROI), `--reference` (깨끗한 사진 ECC 정렬 [R31] → 기준색·배경 +
+  정답 오염 마스크 `reference_labels.json` → evaluate `--labels` 면적 IoU). `--reference`는 합성 테스트만 통과 (정답 IoU ≥ 0.8) — 실제 사진 쌍
+  `data/own/dirty_windows/pairs/<세트>/{clean.jpg, dirty_*.jpg}` 촬영 필요
+
 ## 보정
 
 사람이 매긴 청소 우선순위(1~5)에 CSI level이 가장 잘 맞도록 **level 경계 4개와 k_t**를 고른다.
@@ -242,6 +294,13 @@ CSI의 입력(영역별 A_j·종류·ΔE)을 정면화 창문 이미지에서 �
    ```bash
    uv run --project cv python -m facade_cv.contamination.calibrate fit --regions runs/insp_001/result.json --doc docs/scoring.md
    ```
+   csi_calib 평가지(55장, 미리 정한 fit/holdout 분할) — k_t는 고정하고 경계 4개만 fit으로 맞춘 뒤 holdout으로 평가:
+   ```bash
+   uv run --project cv python -m facade_cv.contamination.calibrate fit --regions runs/csi_calib/regions.json \
+       --split runs/csi_calib/key.csv --cuts-only --doc docs/scoring.md
+   ```
+   평가지(`runs/csi_calib/sheet.html`)로 모은 결과는 평가자별 `data/ratings/<이름>.csv` (image,rating,time)로 둔다.
+   합본 `ratings_all.csv`처럼 rating 열이 없는 csv는 읽지 않는다
 
 ### 보정 결과
 
@@ -286,13 +345,6 @@ CSI의 입력(영역별 A_j·종류·ΔE)을 정면화 창문 이미지에서 �
 ![혼동 행렬](img/calibration_confusion.png)
 
 <!-- calibration:end -->
-   csi_calib 평가지(55장, 미리 정한 fit/holdout 분할) — k_t는 고정하고 경계 4개만 fit으로 맞춘 뒤 holdout으로 평가:
-   ```bash
-   uv run --project cv python -m facade_cv.contamination.calibrate fit --regions runs/csi_calib/regions.json \
-       --split runs/csi_calib/key.csv --cuts-only --doc docs/scoring.md
-   ```
-   평가지(`runs/csi_calib/sheet.html`)로 모은 결과는 평가자별 `data/ratings/<이름>.csv` (image,rating,time)로 둔다.
-   합본 `ratings_all.csv`처럼 rating 열이 없는 csv는 읽지 않는다
 
 **csi_calib 1차 보정 해석과 한계 (2026-11-01, 평가자 3명 × 55장)**
 - **결론: 보정 경계값을 config/grading.yaml에 반영하지 않는다.** holdout QWK 0.207 → 0.227, 완전 일치 35% → 35%로 차이가 없고,

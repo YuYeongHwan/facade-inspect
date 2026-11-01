@@ -145,6 +145,18 @@ def _edge_step(L0: np.ndarray, a: int, b: int, lo: int, hi: int, step: int) -> f
     return max(out)
 
 
+def _straight_cover(segs: np.ndarray, a: int, b: int, lo: int, hi: int, tol: int) -> float:
+    """막대 띠 [a−tol, b+tol) 안에 양 끝점이 모두 있는 선분(= 막대와 나란한 직선)의 축 방향 투영 합집합 / (hi − lo).
+    segs: (N, 4) [가로 좌표1, 축 좌표1, 가로 좌표2, 축 좌표2] — 수평 막대는 x·y를 바꿔 넘긴다."""
+    if not len(segs):
+        return 0.0
+    inside = ((segs[:, 0] >= a - tol) & (segs[:, 0] < b + tol) & (segs[:, 2] >= a - tol) & (segs[:, 2] < b + tol))
+    cover = np.zeros(hi - lo, bool)
+    for _, p1, _, p2 in segs[inside]:
+        cover[max(int(min(p1, p2)) - lo, 0):max(int(np.ceil(max(p1, p2))) - lo, 0)] = True
+    return float(cover.mean()) if len(cover) else 0.0
+
+
 def bar_structures(diff: np.ndarray, glass: np.ndarray, L: np.ndarray, cfg: dict) -> np.ndarray:
     """정면화 창문의 수평·수직 막대 (창틀·창살·비친 건물 모서리): 유리 높이(폭)의 line_span 이상이 '다름'(diff)인
     열(행) 묶음을 두께와 상관없이 막대로 보되, 경계가 날카로운 것만 (경계 밝기 계단 ≥ line_min_edge).
@@ -161,16 +173,25 @@ def bar_structures(diff: np.ndarray, glass: np.ndarray, L: np.ndarray, cfg: dict
     L0 = L[..., 0]
     out = np.zeros_like(glass)
     st, me = cc["line_edge_step"], cc["line_min_edge"]
+    segs = None
+    if cc["line_straight"]:  # 곧은 막대만: 나란한 LSD 선분 [R32]이 유리 높이(폭)의 line_span 이상을 덮어야 한다
+        s = cv2.createLineSegmentDetector().detect(np.clip(L0 * 2.55, 0, 255).astype(np.uint8))[0]
+        segs = np.zeros((0, 4), np.float32) if s is None else s.reshape(-1, 4)
 
     def sharp(L1: np.ndarray, a: int, b: int, lo: int, hi: int) -> bool:  # 번지게 한 tol을 빼고 원래 경계에서 잰다
         a, b = (a + tol, b - tol) if b - a > 2 * tol else (a, b)
         return _edge_step(L1, a, b, lo, hi, st) >= me
 
+    def straight(sg: np.ndarray | None, a: int, b: int, lo: int, hi: int) -> bool:
+        return sg is None or _straight_cover(sg, a, b, lo, hi, tol) >= cc["line_span"]
+
+    vsegs = segs  # 수직 막대: [x1, y1, x2, y2] 그대로
+    hsegs = None if segs is None else segs[:, [1, 0, 3, 2]]  # 수평 막대: 축을 바꿔서
     for a, b in _runs(dv):  # 수직 막대: 열 묶음, 경계는 좌우
-        if sharp(L0[y0:y1], x0 + a, x0 + b, x0, x1):
+        if sharp(L0[y0:y1], x0 + a, x0 + b, x0, x1) and straight(vsegs, x0 + a, x0 + b, y0, y1):
             out[y0:y1, x0 + a:x0 + b] = True
     for a, b in _runs(dh):  # 수평 막대: 행 묶음, 경계는 위아래
-        if sharp(L0[:, x0:x1].T, y0 + a, y0 + b, y0, y1):
+        if sharp(L0[:, x0:x1].T, y0 + a, y0 + b, y0, y1) and straight(hsegs, y0 + a, y0 + b, x0, x1):
             out[y0 + a:y0 + b, x0:x1] = True
     return out & glass & diff
 
@@ -209,7 +230,8 @@ def panes(glass: np.ndarray, lines: np.ndarray, min_ratio: float) -> list[np.nda
     return [m for m in out if m.sum() >= min_ratio * glass.sum()]
 
 
-def candidates(bgr: np.ndarray, glass: np.ndarray, cfg: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def candidates(bgr: np.ndarray, glass: np.ndarray, cfg: dict,
+               reference: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(후보 bool, 배경 대비 ΔE 맵, 제외 bool = 반사광 + 창살·창틀 직선 구조).
 
     1) 국소·전체 배경 대비 '다른' 픽셀의 행·열 투영으로 수평·수직 막대(창틀·창살)를 찾아 유리를 칸으로 나눈다
@@ -219,6 +241,13 @@ def candidates(bgr: np.ndarray, glass: np.ndarray, cfg: dict) -> tuple[np.ndarra
     cc = cfg["candidate"]
     sm = cv2.GaussianBlur(bgr, (0, 0), cc["blur_sigma"]) if cc["blur_sigma"] > 0 else bgr
     L = lab(sm)
+    if reference is not None:  # 같은 위치 깨끗한 사진 (정렬됨) = 픽셀별 배경. 유리 뒤 풍경이 같으니 막대·칸·국소 배경이 필요 없다
+        rs = cv2.GaussianBlur(reference, (0, 0), cc["blur_sigma"]) if cc["blur_sigma"] > 0 else reference
+        de = np.linalg.norm(L - lab(rs), axis=2).astype(np.float32)
+        glare = glare_mask(L, glass, cfg)
+        c = cv2.morphologyEx(((de >= cc["global_delta_e"]) & glass & ~glare).astype(np.uint8), cv2.MORPH_OPEN, _disk(cc["open_px"]))
+        c = cv2.morphologyEx(c, cv2.MORPH_CLOSE, _disk(cc["close_px"]))
+        return c.astype(bool) & glass & ~glare, de * glass, glare
     short = min(bgr.shape[:2])
     bg = cv2.medianBlur(sm, _odd(short * cc["local_bg_ratio"]))
     local = (np.linalg.norm(L - lab(bg), axis=2) >= cc["local_delta_e"]) & glass
@@ -274,6 +303,9 @@ def region_features(m: np.ndarray, glass: np.ndarray, img_lab: np.ndarray, ref: 
         "dL": None if ref is None else float(mean[0] - ref[0]),
         "highlight": float((px[:, 0] >= cfg["wet"]["highlight_L"]).mean()),
         "delta_e": None if ref is None else float(np.linalg.norm(mean - ref)),
+        "chroma_gain": None if ref is None else float(np.hypot(*mean[1:]) - np.hypot(*ref[1:])),
+        "dL_mean": None if ref is None else float(mean[0] - ref[0]),
+        "chroma": float(np.hypot(*mean[1:])),
     }
 
 
@@ -325,14 +357,64 @@ def is_reflection(m: np.ndarray, g: np.ndarray, a_g: int, edges: np.ndarray, lin
     return edges[inner].sum() / area >= rc["min_edge_density"] or lines[inner].sum() / area >= rc["min_line_density"]
 
 
+def suspect_reason(m: np.ndarray, f: dict, a_g: int, cfg: dict) -> str | None:
+    """색·크기 기반 반사 의심 사유 (윤곽·직선 밀도 규칙 is_reflection은 따로): 'chroma' = 채도가 기준보다 크게 오른 번짐
+    (비친 나무·하늘), 'large' = 국소 후보 하나가 유리의 큰 부분 (실내 벽·창턱 — 기준색 실패). 아니면 None."""
+    cg, mr = cfg["reflection"]["min_chroma_gain"], cfg["candidate"]["max_region_ratio"]
+    if cg is not None and f["chroma_gain"] is not None and f["chroma_gain"] >= cg:
+        return "chroma"
+    if mr is not None and m.sum() > mr * a_g:
+        return "large"
+    return None
+
+
+def sharp_white(m: np.ndarray, grad: np.ndarray, f: dict, a_g: int, cfg: dict) -> bool:
+    """반사 의심 예외: glare.keep_sharp 조건 (윤곽 날카로움·덩어리) + 흰색 계열 (기준보다 밝고 채도 ≤ glare.C_max) → 새똥 등 흰 오염.
+    면적 상한은 keep_sharp.exception_max_area (null = 없음)."""
+    ks, gc = cfg["glare"]["keep_sharp"], cfg["glare"]
+    if not ks["reflection_exception"] or f["dL_mean"] is None or f["dL_mean"] <= 0:
+        return False
+    if ks["exception_max_area"] is not None and m.sum() > ks["exception_max_area"] * a_g:
+        return False
+    if f["solidity"] < ks["min_solidity"]:
+        return False
+    ring = cv2.dilate(m.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool) & ~m
+    return bool(ring.any() and grad[ring].mean() >= ks["min_edge"] and f["chroma"] <= gc["C_max"])
+
+
+def film_map(crop: np.ndarray, cfg: dict) -> tuple[np.ndarray, np.ndarray]:
+    """유리 전체 먼지막(film) 정도 맵과 film이 없을 때의 추정 이미지 대비 ΔE 맵 (둘 다 (H, W) float).
+    veil: 어두운 채널 사전 [R34] — haze = 1 − t, t = 1 − ω·dark(I/A). ΔE = |I − J|, J = (I − A)/max(t, t0) + A.
+    texture: 미세 질감 밀도 — |Laplacian| (회색, 0~255)의 국소 평균. ΔE = I와 작은 median (점·줄 제거) 대비."""
+    fc = cfg["film"]
+    img = crop.astype(np.float32) / 255
+    if fc["metric"] == "veil":
+        k = np.ones((fc["patch_px"], fc["patch_px"]), np.uint8)
+        dark = cv2.erode(img.min(2), k)
+        top = dark >= np.quantile(dark, 0.999)
+        A = np.maximum(img[top].mean(0), 1e-3)  # 대기광: 어두운 채널 상위 0.1% 픽셀의 평균색 [R34]
+        t = 1 - fc["omega"] * cv2.erode((img / A).min(2), k)
+        J = np.clip((img - A) / np.maximum(t, fc["t0"])[..., None] + A, 0, 1)
+        de = np.linalg.norm(lab((img * 255).astype(np.uint8)) - lab((J * 255).astype(np.uint8)), axis=2)
+        return 1 - t, de
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    dens = cv2.blur(np.abs(cv2.Laplacian(gray, cv2.CV_32F, ksize=3)), (fc["patch_px"], fc["patch_px"]))
+    de = np.linalg.norm(lab(crop) - lab(cv2.medianBlur(crop, 5)), axis=2)
+    return dens, de
+
+
 def analyze_crop(crop: np.ndarray, occlusion: np.ndarray | None = None, cfg: dict | None = None,
-                 grading: dict | None = None, exclude: np.ndarray | None = None) -> Analysis:
+                 grading: dict | None = None, exclude: np.ndarray | None = None,
+                 reference: np.ndarray | None = None) -> Analysis:
     """정면화 창문 BGR (+ 가림 bool) → 오염 영역·CSI. 크면 rectify.max_side로 줄여서 분석한다.
-    exclude: 오염 후보·깨끗한 유리 기준에서 뺄 픽셀 (다시점 모드: 시점에 따라 바뀌는 픽셀 = 반사·실내). crop과 같은 크기."""
+    exclude: 오염 후보·깨끗한 유리 기준에서 뺄 픽셀 (다시점 모드: 시점에 따라 바뀌는 픽셀 = 반사·실내). crop과 같은 크기.
+    reference: 같은 위치의 깨끗한 사진을 crop에 정렬한 것 (crop과 같은 크기) — 후보 배경·기준색으로 쓴다."""
     cfg = cfg or load_config("contamination")
     grading = grading or load_config("grading")
     if max(crop.shape[:2]) > cfg["rectify"]["max_side"]:
         crop = resize_max(crop, cfg["rectify"]["max_side"])
+        if reference is not None:
+            reference = cv2.resize(reference, crop.shape[1::-1], interpolation=cv2.INTER_AREA)
         if occlusion is not None:
             occlusion = cv2.resize(occlusion.astype(np.uint8), crop.shape[1::-1], interpolation=cv2.INTER_NEAREST) > 0
     h, w = crop.shape[:2]
@@ -341,17 +423,21 @@ def analyze_crop(crop: np.ndarray, occlusion: np.ndarray | None = None, cfg: dic
     a_g = int(glass.sum())
     if a_g == 0:
         raise ValueError("glass area is 0 (fully occluded or frame_margin too large)")
-    cand, de_map, glare = candidates(crop, glass, cfg)
+    cand, de_map, glare = candidates(crop, glass, cfg, reference)
     if exclude is not None:  # 반사광·창살 제외 마스크와 같이 다룬다 (overlay 흰 외곽)
         cand &= ~exclude
         glare = glare | (exclude & glass)
     img = lab(crop)
     clean = glass & ~cand & ~glare
     sc = grading["severity"]
-    ref = reference_lab(img, clean, cfg["reference"]["l_quantiles"]) if clean.sum() >= sc["clean_min_ratio"] * a_g else None
+    if reference is not None:  # 기준색 = 깨끗한 사진의 유리 (반사광 제외)
+        ref = reference_lab(lab(reference), glass & ~glare, cfg["reference"]["l_quantiles"])
+    else:
+        ref = reference_lab(img, clean, cfg["reference"]["l_quantiles"]) if clean.sum() >= sc["clean_min_ratio"] * a_g else None
 
     refl = cfg["reflection"]["enabled"]
     edges, lines = scene_structure(crop, cfg) if refl else (None, None)
+    grad = np.hypot(cv2.Sobel(img[..., 0], cv2.CV_32F, 1, 0, ksize=3), cv2.Sobel(img[..., 0], cv2.CV_32F, 0, 1, ksize=3)) / 8
     suspects: list[Found] = []
     merge = _disk(round(min(h, w) * cfg["dust"]["merge_ratio"]))
     groups = cv2.connectedComponents(cv2.dilate(cand.astype(np.uint8), merge))[1]
@@ -367,7 +453,19 @@ def analyze_crop(crop: np.ndarray, occlusion: np.ndarray | None = None, cfg: dic
         de = f["delta_e"]
         r = Found(classify(f, m.sum() / a_g, cfg), m, g, None if de is None else round(de, 2),
                   severity_level(de, grading) if de is not None else sc["max"], f)
-        (suspects if refl and is_reflection(m, g, a_g, edges, lines, cfg) else found).append(r)
+        why = suspect_reason(m, f, a_g, cfg) or ("structure" if refl and is_reflection(m, g, a_g, edges, lines, cfg) else None)
+        r.features["suspect"] = why
+        (suspects if why and not sharp_white(m, grad, f, a_g, cfg) else found).append(r)
+    if cfg["film"]["enabled"]:  # 먼지막: 덮인 비율만큼 dust 영역 1개 (국소 영역·반사 의심·반사광 밖)
+        fm, fde = film_map(crop, cfg)
+        free = glass & ~glare
+        for r in found + suspects:
+            free &= ~r.group
+        film = cv2.morphologyEx(((fm >= cfg["film"]["min"]) & free).astype(np.uint8), cv2.MORPH_OPEN, _disk(cfg["candidate"]["open_px"]))
+        film = cv2.morphologyEx(film, cv2.MORPH_CLOSE, _disk(cfg["candidate"]["close_px"])).astype(bool) & free
+        if film.sum() >= cfg["candidate"]["min_area_ratio"] * a_g:
+            de = float(np.median(fde[film]))
+            found.append(Found("dust", film, film, round(de, 2), severity_level(de, grading), {"film": True}))
     regions = [Region(r.type, float(r.mask.sum() / a_g), r.severity, r.delta_e) for r in found]
     csi = compute_csi(regions, grading)
     level, label = cleaning_level(csi, grading)
@@ -447,7 +545,8 @@ def _quad_area(c) -> float:
     return float(cv2.contourArea(np.asarray(c, np.float32).reshape(-1, 1, 2)))
 
 
-def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | None = None, single: bool = False) -> dict:
+def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | None = None, single: bool = False,
+                references: dict[str, np.ndarray] | None = None) -> dict:
     """runs/<id>/result.json의 창문을 분석해 같은 파일을 갱신. report(dict) 반환.
 
     recon/window_obs.json ({"frames": 폴더(run_dir 기준), "windows": {id: [{frame, corners, occlusion?}]}})이 있으면
@@ -455,6 +554,7 @@ def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | No
       (multiview.py). 정렬 실패·관측 부족이면 단일 모드로 내려간다 (사유별 개수를 report에)
     - 단일 모드 (single=True 또는 대안): 가장 큰 (= 가장 가깝고 정면) 관측 1장 — low_confidence
     없으면 기존 windows/<id>/crop.jpg (외벽 정사영에서 자른 저해상도)로 단일 분석하고 경고를 남긴다.
+    references: {프레임 이름: 그 프레임에 정렬한 깨끗한 사진} — 단일 모드에서 같은 코너로 정면화해 기준으로 쓴다 (photos --reference).
     """
     from facade_cv.contamination.multiview import stack_views
 
@@ -479,7 +579,7 @@ def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | No
     for w in res["windows"]:
         t = time.perf_counter()
         views = obs["windows"].get(w["id"], [])
-        mode, exclude, mv = "single", None, None
+        mode, exclude, mv, ref_crop = "single", None, None, None
         if views and frames is not None and not single:
             mv = stack_views(frame, views, cfg, grading["frame_margin"])
             if not mv.ok:
@@ -491,6 +591,8 @@ def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | No
             v = max(views, key=lambda v: _quad_area(v["corners"]))
             crop, M = rectify_quad(frame(v["frame"]), v["corners"], cfg["rectify"]["max_side"])
             occ = warp_polygons(v.get("occlusion"), M, crop.shape[:2])
+            if references and v["frame"] in references:
+                ref_crop = rectify_quad(references[v["frame"]], v["corners"], cfg["rectify"]["max_side"])[0]
             stats["single_from_frames"] += 1
         else:
             crop = cv2.imread(str(run_dir / w["images"]["crop"]))
@@ -499,7 +601,7 @@ def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | No
         if crop is None or min(crop.shape[:2]) < cfg["rectify"]["min_side"]:
             stats["too_small"] += 1  # 미분석으로 남긴다
             continue
-        a = analyze_crop(crop, occ, cfg, grading, exclude)
+        a = analyze_crop(crop, occ, cfg, grading, exclude, ref_crop)
         d = run_dir / "windows" / w["id"]
         save_window_images(a, d, cfg)
         w.update(window_fields(a, mode, mode == "single", cfg, grading))
@@ -528,10 +630,91 @@ def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | No
     return stats
 
 
+def align_reference(dirty: np.ndarray, clean: np.ndarray, cfg: dict) -> np.ndarray | None:
+    """깨끗한 사진을 오염 사진에 ECC 호모그래피 [R31]로 정렬 (사진 전체로 상관). 실패·상관 < multiview.ecc_min이면 None."""
+    from facade_cv.contamination.multiview import ecc_align
+
+    clean = cv2.resize(clean, dirty.shape[1::-1], interpolation=cv2.INTER_AREA) if clean.shape != dirty.shape else clean
+    out, corr = ecc_align(cv2.cvtColor(dirty, cv2.COLOR_BGR2GRAY), clean, cfg)
+    return out if out is not None and corr >= cfg["multiview"]["ecc_min"] else None
+
+
+def reference_truth(dirty: np.ndarray, aligned_clean: np.ndarray, cfg: dict, grading: dict) -> np.ndarray:
+    """정답 오염 마스크 = 정렬한 깨끗한 사진 대비 ΔE ≥ grading 심각도 첫 경계 (지각 가능한 차이 [R23]) — 흐림·열림·닫힘·작은 조각 제거는
+    후보 검출과 같은 값. 반사광(밝고 무채색)은 뺀다. (H, W) bool, 원본 크기."""
+    cc = cfg["candidate"]
+    blur = (lambda x: cv2.GaussianBlur(x, (0, 0), cc["blur_sigma"])) if cc["blur_sigma"] > 0 else (lambda x: x)
+    L = lab(blur(dirty))
+    de = np.linalg.norm(L - lab(blur(aligned_clean)), axis=2)
+    full = np.ones(de.shape, bool)
+    m = (de >= grading["severity"]["delta_e"][0]) & ~glare_mask(L, full, cfg)
+    m = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_OPEN, _disk(cc["open_px"]))
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, _disk(cc["close_px"]))
+    n, lbl, st, _ = cv2.connectedComponentsWithStats(m)
+    keep = np.flatnonzero(st[1:, cv2.CC_STAT_AREA] >= cc["min_area_ratio"] * de.size) + 1
+    return np.isin(lbl, keep)
+
+
+def mask_polygons(m: np.ndarray, eps: float) -> list[list[list[float]]]:
+    """bool 마스크 → 외곽 polygon (u, v) 0~1 목록 (evaluate --labels 형식)."""
+    h, w = m.shape
+    cs, _ = cv2.findContours(m.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    out = []
+    for c in cs:
+        p = cv2.approxPolyDP(c, eps * cv2.arcLength(c, True), True).reshape(-1, 2)
+        if len(p) >= 3:
+            out.append([[round(float(x) / w, 4), round(float(y) / h, 4)] for x, y in p])
+    return out
+
+
+def roi_window(roi, w: int, h: int) -> tuple[np.ndarray, list[list[list[float]]]]:
+    """ROI ([u0, v0, u1, v1] 사각형 또는 [[u, v], ...] 다각형, 0~1) → (창 코너 = ROI 외접 사각형 TL TR BR BL 픽셀,
+    가림 polygon 목록 = 외접 사각형 안 ROI 밖 조각들). 다각형은 외접 사각형 네 변에 닿으므로 밖 조각에 구멍이 없다."""
+    pts = np.array([[roi[0], roi[1]], [roi[2], roi[1]], [roi[2], roi[3]], [roi[0], roi[3]]] if np.ndim(roi) == 1 else roi, float)
+    pts = pts * [w - 1, h - 1]
+    x0, y0 = pts.min(0)
+    x1, y1 = pts.max(0)
+    corners = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]])
+    m = np.zeros((h, w), np.uint8)
+    cv2.rectangle(m, (round(x0), round(y0)), (round(x1), round(y1)), 1, -1)
+    cv2.fillPoly(m, [np.round(pts).astype(np.int32)], 0)
+    cs, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return corners, [c.reshape(-1, 2).astype(float).tolist() for c in cs if len(c) >= 3]
+
+
+def whole_image_facade(img: np.ndarray, name: str, height: float, max_side: int, roi=None):
+    """사진 전체 = 창문 1개 (row 1, col 1)인 가상 외벽. 정면화하지 않는다 (근접 사진엔 외벽 직선이 없다).
+    roi: 사진 중 유리 부분 (roi_window 형식) — 창 = ROI 외접 사각형, ROI 밖은 가림.
+    (facade, 텍스처 — 긴 변 ≤ max_side로 축소, ppu, [Window3D], T4 형식 검출 1건)."""
+    from facade_cv.recon3d.geometry import FacadeFrame
+    from facade_cv.recon3d.windows3d import LiftedObservation, Window3D, WindowObservation
+
+    h, w = img.shape[:2]
+    tex = resize_max(img, max_side)
+    ppu = tex.shape[0] / height
+    facade = FacadeFrame("F1", np.array([0.0, 0.0, 1.0]), np.zeros(3), tex.shape[1] / ppu, height)
+    corners = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], float)  # TL TR BR BL (원본 픽셀)
+    occ: list = []
+    if roi is not None:
+        corners, occ = roi_window(roi, w, h)
+    fx, fy = facade.width / w, height / h  # 원본 픽셀 → 외벽 단위 (v는 위로)
+    rect = np.array([corners[0, 0] * fx, (h - corners[2, 1] - 1) * fy, (corners[1, 0] + 1) * fx, (h - corners[0, 1]) * fy])  # 픽셀 경계 기준
+    win = Window3D("F1", rect, [LiftedObservation(WindowObservation(name, corners, 1.0), "F1", rect)], row=1, col=1)
+    det = {"image": name, "counts": {"final": 1},
+           "windows": [{"corners": corners.tolist(), "conf": 1.0, "row": 0, "col": 0, "occlusion": occ}]}
+    return facade, tex, ppu, [win], det
+
+
 def photos_to_run(images: str | Path, out: str | Path, weights: str | Path | None = None,
-                  device: str | None = None) -> dict:
+                  device: str | None = None, whole_image: bool = False, roi: dict | None = None,
+                  reference: str | Path | None = None) -> dict:
     """사진 폴더 → 사진마다 T4 창문 검출 → 사진 1장 = 가상 외벽 1개 (degrade 경로 재사용) → result.json → 창별 분석.
-    3D 복원이 아니다: 외벽 판들을 옆으로 늘어놓은 메시라 웹에서 b04와 같은 화면으로 볼 수 있게 하는 시연용."""
+    3D 복원이 아니다: 외벽 판들을 옆으로 늘어놓은 메시라 웹에서 b04와 같은 화면으로 볼 수 있게 하는 시연용.
+    whole_image: 창문 검출 없이 사진 전체를 유리 1장으로 (차 앞유리·유리 근접 사진처럼 창문 검출이 안 되는 사진용).
+    roi: {파일명: 유리 ROI (roi_window 형식)} — whole_image에서만. 없는 사진은 전체.
+    reference: 같은 위치의 깨끗한 사진 (images 폴더 안이면 분석에서 뺀다). 사진마다 ECC로 정렬해 기준으로 쓰고,
+      정렬한 깨끗한 사진 대비 차이로 정답 오염 마스크를 만들어 <out>/reference_labels.json (evaluate --labels 형식)과
+      <out>/reference_truth/<사진>.png에 저장, 단일 모드(기준 없음)·기준 모드 검출의 면적 IoU를 report에 남긴다."""
     import trimesh
 
     from facade_cv.detect.datasets.yolo import list_images
@@ -544,20 +727,41 @@ def photos_to_run(images: str | Path, out: str | Path, weights: str | Path | Non
 
     images, out = Path(images), Path(out)
     dcfg, rcfg = load_config("detect"), load_config("recon")
-    seg = WindowSegmenter(weights, dcfg, device)
+    seg = None if whole_image else WindowSegmenter(weights, dcfg, device)
     facades, bodies, textures, windows, det_all, skipped = [], [], {}, [], {"images": []}, []
+    cfg, grading = load_config("contamination"), load_config("grading")
+    clean = cv2.imread(str(reference)) if reference else None
+    if reference and clean is None:
+        raise FileNotFoundError(reference)
+    refs, truth, ious, unaligned = {}, {}, {}, []
     x = 0.0
     for p in list_images(images):
-        img = cv2.imread(str(p))
-        res = postprocess(img, seg.predict(img, conf=dcfg["conf"] * dcfg["fill_conf_ratio"]), dcfg)
-        if not res.windows:
-            skipped.append(p.name)
+        if reference and p.resolve() == Path(reference).resolve():
             continue
-        det = {"image": p.name, "counts": {"final": len(res.windows)},
-               "windows": [{"corners": w.corners.tolist(), "conf": w.conf, "row": w.row, "col": w.col,
-                            "occlusion": [q.tolist() for q in w.occlusion]} for w in res.windows]}
+        img = cv2.imread(str(p))
+        if clean is not None:
+            al = align_reference(img, clean, cfg)
+            if al is None:
+                unaligned.append(p.name)
+            else:
+                refs[p.name] = al
+                gt = reference_truth(img, al, cfg, grading)
+                truth[p.name] = gt
+                ious[p.name] = {k: _iou(analyze_crop(img, None, cfg, grading, reference=r), gt)
+                                for k, r in (("single", None), ("reference", al))}
+        if whole_image:
+            f, tex, ppu, wins, det = whole_image_facade(img, p.name, rcfg["degrade"]["facade_height"],
+                                                        rcfg["ortho"]["max_side_px"], (roi or {}).get(p.name))
+        else:
+            res = postprocess(img, seg.predict(img, conf=dcfg["conf"] * dcfg["fill_conf_ratio"]), dcfg)
+            if not res.windows:
+                skipped.append(p.name)
+                continue
+            det = {"image": p.name, "counts": {"final": len(res.windows)},
+                   "windows": [{"corners": w.corners.tolist(), "conf": w.conf, "row": w.row, "col": w.col,
+                                "occlusion": [q.tolist() for q in w.occlusion]} for w in res.windows]}
+            f, tex, ppu, wins, _ = degrade_facade({"images": [det]}, images, rcfg["degrade"])
         det_all["images"].append(det)
-        f, tex, ppu, wins, _ = degrade_facade({"images": [det]}, images, rcfg["degrade"])
         fid = f"F{len(facades) + 1}"
         f = replace(f, id=fid, origin=np.array([x, 0.0, 0.0]))
         body, (f,), _ = build_mesh([f], rcfg["mesh"])
@@ -572,12 +776,33 @@ def photos_to_run(images: str | Path, out: str | Path, weights: str | Path | Non
         raise ValueError(f"no windows detected in {images}")
     status = {"mode": "degraded", "num_facades": len(facades), "registered_ratio": None,
               "warnings": ["photos: 사진마다 가상 외벽 1개 (3D 복원 아님, 시연용)"]
+              + (["whole_image: 창문 검출 없이 사진 전체를 유리로 분석"] if whole_image else [])
+              + ([f"roi: {len(roi)}장 유리 ROI 지정"] if roi else [])
+              + ([f"reference: 깨끗한 사진 {Path(reference).name} 기준 (정렬 실패 {len(unaligned)}장)"] if reference else [])
               + ([f"no_windows: {', '.join(skipped)}"] if skipped else [])}
     meta = {"video": str(images), "fps": 1.0, "frames_used": len(facades)}
     export_result(out, out.name, meta, trimesh.util.concatenate(bodies), facades, textures, windows, status,
                   rcfg["ortho"]["jpeg_quality"])
     write_window_obs(out, images, windows, det_all)
-    return analyze_run(out) | {"photos": len(facades), "skipped": skipped}
+    rep = analyze_run(out, cfg, grading, references=refs) | {"photos": len(facades), "skipped": skipped}
+    if reference:
+        (out / "reference_truth").mkdir(exist_ok=True)
+        labels = {}
+        for n, gt in truth.items():
+            cv2.imwrite(str(out / "reference_truth" / f"{Path(n).stem}.png"), gt.astype(np.uint8) * 255)
+            labels[str(images / n)] = [{"class": "dirt", "polygon": poly} for poly in mask_polygons(gt, cfg["polygon_eps"])]
+        (out / "reference_labels.json").write_text(json.dumps(labels, ensure_ascii=False), encoding="utf-8")
+        rep |= {"reference_iou": ious, "reference_unaligned": unaligned}
+    return rep
+
+
+def _iou(a: "Analysis", gt: np.ndarray) -> float:
+    """분석 검출(모든 오염 영역) vs 정답 마스크 (원본 크기 → 분석 크기로 줄여서) 면적 IoU, 유리 안."""
+    det = np.zeros(a.glass.shape, bool)
+    for r in a.regions:
+        det |= r.mask
+    g = cv2.resize(gt.astype(np.uint8), det.shape[::-1], interpolation=cv2.INTER_NEAREST).astype(bool) & a.glass
+    return round(float((det & g).sum() / max((det | g).sum(), 1)), 3)
 
 
 app = typer.Typer(add_completion=False)
@@ -608,9 +833,17 @@ def image(path: Path = typer.Argument(..., exists=True, dir_okay=False),
 def photos(images: Path = typer.Option(..., exists=True, file_okay=False, help="창문 사진 폴더 (근접·원거리)"),
            out: Path = typer.Option(..., help="runs/demo_<이름>"),
            weights: Path = typer.Option(None, help="기본: config/detect.yaml weights"),
-           device: str = typer.Option(None)) -> None:
+           device: str = typer.Option(None),
+           whole_image: bool = typer.Option(False, "--whole-image", help="창문 검출 없이 사진 전체를 유리로 (차 앞유리 등 근접 사진)"),
+           roi: Path = typer.Option(None, exists=True, dir_okay=False,
+                                    help='--whole-image용 유리 ROI json {"파일명": [u0,v0,u1,v1] 또는 [[u,v],...]} (0~1)'),
+           reference: Path = typer.Option(None, exists=True, dir_okay=False,
+                                          help="같은 위치의 깨끗한 사진 — 기준색·배경 + 정답 오염 마스크 (pairs/<세트>/clean.jpg)")) -> None:
     """사진 폴더 → T4 검출 → 창별 단일 모드 분석 → runs/demo_<이름>/result.json (웹에서 그대로 보기)."""
-    print(json.dumps(photos_to_run(images, out, weights, device), ensure_ascii=False))
+    rois = json.loads(roi.read_text(encoding="utf-8")) if roi else None
+    if rois and not whole_image:
+        raise typer.BadParameter("--roi는 --whole-image와 함께")
+    print(json.dumps(photos_to_run(images, out, weights, device, whole_image, rois, reference), ensure_ascii=False))
 
 
 if __name__ == "__main__":

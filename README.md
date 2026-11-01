@@ -66,6 +66,10 @@ uv run --project cv python -m facade_cv.contamination.grade 0.03                
 uv run --project cv python -m facade_cv.contamination.analyze run runs/<id>       # 오염 분석 (result.json 갱신, 아래 "오염 영역 검출")
 uv run --project cv python -m facade_cv.contamination.analyze image X.jpg --out runs/x   # 사진 1장 = 유리 전체
 uv run --project cv python -m facade_cv.contamination.analyze photos --images data/own/dirty_windows --out runs/demo_<이름>
+uv run --project cv python -m facade_cv.contamination.analyze photos --images data/own/dirty_windows/web --out runs/demo_web --whole-image   # 창문 검출 없이 사진 전체를 유리로 (차 앞유리 등 근접 사진)
+#   --roi data/own/dirty_windows/web/roi.json   사진별 유리 ROI (사각형 [u0,v0,u1,v1] 또는 다각형, 0~1) — 앞유리만
+#   --reference pairs/<세트>/clean.jpg          같은 위치 깨끗한 사진 → ECC 정렬해 기준 + 정답 오염 마스크 (<out>/reference_labels.json)
+uv run --project cv python -m facade_cv.contamination.evaluate rank --grid "film.min=0.5,0.7"   # csi_calib fit 38장 5-fold Spearman (holdout은 --final 1회만)
 uv run --project cv python -m facade_cv.contamination.evaluate t7                 # t7_dev 30장 평가 → runs/t7_dev/ (--labels 오염 polygon json → IoU)
 uv run --project cv python -m facade_cv.contamination.evaluate calib              # csi_calib 블라인드 평가지 → runs/csi_calib/sheet.html
 uv run --project cv python -m facade_cv.recon3d.run --frames runs/<id>/frames --detections runs/<id>/detect --out runs/<id> --debug

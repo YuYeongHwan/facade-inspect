@@ -15,6 +15,9 @@ heavy(심한 오염) 분류의 박스는 사진 전체를 덮어 "박스 적중"
   {"<csv path 열과 같은 경로>": [{"class": "dirt|stain|heavy|...", "polygon": [[u, v], ...]}, ...], ...}
   (u, v)는 이미지 폭·높이 대비 0~1. 있으면 그 이미지에 면적 IoU = |검출 ∩ 정답| / |검출 ∪ 정답| (유리 안)을 계산한다.
 
+rank: runs/csi_calib/images (평가자가 본 crop 그대로) 재분석 → CSI와 사람 합의 등급의 Spearman. 기본 split=fit 38장만 읽고,
+  --grid로 준 값 조합은 5-fold 교차 검증 (fold마다 나머지 4/5에서 Spearman 최대 조합을 골라 남은 1/5에서 잰다).
+  holdout은 --final로만 (격자 없이 현재 config 한 번, 경계값 그대로의 QWK·완전 일치율 + 오버레이) — 튜닝 중 사용 금지
 calib: data/eval/csi_calib.csv 60장 → 평가자 3명용 블라인드 평가지. 이 결과로 contamination.yaml 임계값을 고치지 않는다
 (보정은 grading.yaml k_t·level 경계만, calibrate fit). 평가 단위 = 분석한 이미지 그대로 (공개 사진은 전체,
 외벽 사진은 T4로 검출한 창 중 분석 가능한 가장 큰 창 1개를 정면화). 출력 <out>/
@@ -213,6 +216,130 @@ def summary_md(rows: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
+CALIB = ROOT / "runs/csi_calib"
+
+
+def set_key(cfg: dict, dotted: str, value) -> dict:
+    """중첩 dict 복사본에 'a.b.c' = value."""
+    import copy
+
+    out = copy.deepcopy(cfg)
+    d = out
+    *path, last = dotted.split(".")
+    for k in path:
+        d = d[k]
+    if last not in d:
+        raise KeyError(dotted)
+    d[last] = value
+    return out
+
+
+def parse_grid(specs: list[str]) -> list[dict]:
+    """["a.b=1,2", "c:d=x:1,y:2"] → 조합 목록 (데카르트 곱). 콜론으로 묶은 키는 함께 바뀐다. 값은 YAML (null·숫자·문자)."""
+    import itertools
+
+    axes = []
+    for sp in specs:
+        keys, vals = sp.split("=", 1)
+        ks = keys.split(":")
+        axes.append([dict(zip(ks, (yaml.safe_load(x) for x in v.split(":")))) for v in vals.split(",")])
+    return [dict(kv for d in combo for kv in d.items()) for combo in itertools.product(*axes)] or [{}]
+
+
+def rank_items(split: str) -> tuple[list[str], np.ndarray]:
+    """(이미지 이름, 사람 합의 등급) — key.csv의 split만."""
+    from facade_cv.contamination.calibrate import consensus, read_ratings
+
+    cons = consensus(read_ratings(ROOT / load_config("calibrate")["ratings_dir"]))
+    names = [r["image"] for r in csv.DictReader(open(CALIB / "key.csv", encoding="utf-8")) if r["split"] == split]
+    return names, np.array([cons[n] for n in names])
+
+
+def spearman(a, b) -> float:
+    from scipy.stats import spearmanr
+
+    r = spearmanr(a, b)[0]
+    return 0.0 if np.isnan(r) else float(r)  # 한쪽이 상수면 순위 정보 없음 = 0
+
+
+def cv_select(table: np.ndarray, y: np.ndarray, folds: int, seed: int) -> tuple[list[float], list[int], int, float]:
+    """table (조합, 이미지) CSI. fold마다 train에서 Spearman 최대 조합 (동점이면 앞 조합) → test Spearman.
+    (fold별 test Spearman, fold별 고른 조합, 전체에서 고른 조합, out-of-fold CSI를 모은 38장 Spearman)."""
+    idx = np.random.default_rng(seed).permutation(len(y))
+    rhos, picks, oof = [], [], np.zeros(len(y))
+    for f in np.array_split(idx, folds):
+        tr = np.setdiff1d(idx, f)
+        best = int(np.argmax([spearman(t[tr], y[tr]) for t in table]))
+        picks.append(best)
+        rhos.append(spearman(table[best][f], y[f]))
+        oof[f] = table[best][f]
+    return rhos, picks, int(np.argmax([spearman(t, y) for t in table])), spearman(oof, y)
+
+
+def rank_csi(names: list[str], cfg: dict, grading: dict, save: Path | None = None) -> np.ndarray:
+    out = []
+    for n in names:
+        a = analyze_crop(cv2.imread(str(CALIB / "images" / n)), None, cfg, grading)
+        out.append(a.csi)
+        if save:
+            save.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(save / n), np.hstack([a.crop, draw_overlay(a, cfg)]), [cv2.IMWRITE_JPEG_QUALITY, 88])
+    return np.array(out)
+
+
+def run_rank(grid: list[str], out: Path, sets: list[str] = (), overlays: bool = False) -> str:
+    """fit 38장 교차 검증 Spearman 표 (md). sets = 고정 덮어쓰기 'a.b=v'."""
+    cfg, grading = load_config("contamination"), load_config("grading")
+    for sp in sets:
+        k, v = sp.split("=", 1)
+        cfg = set_key(cfg, k, yaml.safe_load(v))
+    names, y = rank_items("fit")
+    combos = parse_grid(list(grid))
+    cfgs = [cfg]
+    for c in combos:
+        cc = cfg
+        for k, v in c.items():
+            cc = set_key(cc, k, v)
+        cfgs.append(cc)
+    table = np.array([rank_csi(names, c, grading) for c in cfgs])  # 0 = 고정 설정 그대로 (기준선)
+    fc = load_config("calibrate")["fit"]
+    rhos, picks, best, pooled = cv_select(table[1:], y, fc["folds"], fc["seed"])
+    if overlays:
+        rank_csi(names, cfgs[1 + best], grading, out / "overlays")
+    lines = [f"fit {len(y)}장 · 고정 {list(sets) or '없음'} · 격자 {len(combos)}조합 · {fc['folds']}-fold (seed {fc['seed']})", "",
+             f"- 기준선 (고정 설정) Spearman: {spearman(table[0], y):.3f}",
+             f"- **교차 검증 Spearman (fold 평균): {np.mean(rhos):.3f}** ± {np.std(rhos):.3f} — fold별 {[round(r, 3) for r in rhos]}",
+             f"- out-of-fold CSI 모아서 Spearman (보조): {pooled:.3f}",
+             f"- fold별 고른 조합: {[combos[p] for p in picks]}",
+             f"- 전체 38장에서 고른 조합: {combos[best]} (in-sample Spearman {spearman(table[1 + best], y):.3f})", "",
+             "| 조합 | in-sample Spearman | CSI=0 장수 |", "|---|---|---|"]
+    lines += [f"| {c} | {spearman(t, y):.3f} | {(t == 0).sum()} |" for c, t in zip(combos, table[1:])]
+    lines += ["", "| 이미지 | 사람 | 기준선 CSI | 고른 조합 CSI |", "|---|---|---|---|"]
+    lines += [f"| {n} | {yy} | {a:.4f} | {b:.4f} |" for n, yy, a, b in zip(names, y, table[0], table[1 + best])]
+    md = "\n".join(lines) + "\n"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "rank.md").write_text(md, encoding="utf-8")
+    return md
+
+
+def run_final(out: Path) -> str:
+    """holdout 1회: 현재 config 그대로. Spearman + 현재 경계값 QWK·완전 일치율 + 오버레이."""
+    from facade_cv.contamination.calibrate import qwk
+    from facade_cv.contamination.grade import cleaning_level
+
+    cfg, grading = load_config("contamination"), load_config("grading")
+    names, y = rank_items("holdout")
+    csi = rank_csi(names, cfg, grading, out / "overlays")
+    lv = np.array([cleaning_level(c, grading)[0] for c in csi])
+    md = "\n".join([f"holdout {len(y)}장 (1회 실행)", "", f"- Spearman: {spearman(csi, y):.3f}",
+                    f"- 현재 경계값 QWK: {qwk(y, lv):.3f} · 완전 일치 {np.mean(lv == y):.0%}", "",
+                    "| 이미지 | 사람 | CSI | level |", "|---|---|---|---|",
+                    *[f"| {n} | {a} | {c:.4f} | {b} |" for n, a, c, b in zip(names, y, csi, lv)]]) + "\n"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "holdout.md").write_text(md, encoding="utf-8")
+    return md
+
+
 app = typer.Typer(add_completion=False)
 
 
@@ -310,6 +437,21 @@ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["image,
 a.download=n+".csv";a.click()}});count();
 </script></html>
 """
+
+
+@app.command()
+def rank(grid: list[str] = typer.Option([], help="튜닝 격자 'key=v1,v2' (콜론으로 묶은 키는 함께: 'a:b=x:1,y:2')"),
+         set_: list[str] = typer.Option([], "--set", help="고정 덮어쓰기 'key=v'"),
+         out: Path = typer.Option(ROOT / "runs/t7v2/rank"),
+         overlays: bool = typer.Option(False, help="고른 조합으로 fit 오버레이 저장"),
+         final: bool = typer.Option(False, "--final", help="holdout 17장 1회 (격자·덮어쓰기 없이 현재 config)")) -> None:
+    """csi_calib 재분석 → CSI ↔ 사람 합의 Spearman (fit 교차 검증, holdout은 --final로만)."""
+    if final:
+        if grid or set_:
+            raise typer.BadParameter("--final은 현재 config 그대로만 (격자·덮어쓰기 불가)")
+        print(run_final(out))
+    else:
+        print(run_rank(grid, out, set_, overlays).split("\n\n| 조합")[0])
 
 
 @app.command()

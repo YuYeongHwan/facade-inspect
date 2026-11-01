@@ -6,7 +6,10 @@
 #    1차 튜닝: global_delta_e {8,10,12} × local_delta_e {10,12,15} × min_area_ratio {0.002,0.004} 18조합,
 #    점수 = dirt/stain/heavy 박스 적중률 평균 + 깨끗한 창 level≤2 비율 − glare/wet 박스 안 오검출률 → 최고 (10, 12, 0.002).
 #    점수 차가 작아(0.86~0.97) 더 세밀하게 찾지 않았다 (30장 과적합 방지). 전후 지표: docs/scoring.md
-status: t7_dev 1차 튜닝 + 규칙 추가(keep_sharp·막대 경계·반사 의심) (2026-10-30). multiview는 b04 정렬 상관으로 ecc_band·ecc_max_shift만 정함, 나머지 초기값
+# ⚠️ T7 2차 (2026-11-01): csi_calib fit 38장의 5-fold 교차 검증 Spearman으로만 새 값을 골랐다 (evaluate rank). holdout 17장은 보지 않음.
+#    시도 3종 (film, 곧은 막대·ΔC*·큰 영역 반사 의심, 반사 의심 흰 덩어리 예외) 모두 교차 검증 ρ 0.08 → 0.11로 과적합 → 채택 안 함.
+#    코드는 남기고 아래 "T7 2차" 키는 전부 꺼 둠 (false/null). 결과: docs/scoring.md "T7 2차"
+status: t7_dev 1차 튜닝 + 규칙 추가(keep_sharp·막대 경계·반사 의심) (2026-10-30). T7 2차 시도는 꺼 둠 (2026-11-01). multiview는 b04 정렬 상관으로 ecc_band·ecc_max_shift만 정함, 나머지 초기값
 
 # 정면화 창문 이미지 (단일 모드: 검출 4코너 → 직사각형 호모그래피)
 rectify:
@@ -44,12 +47,14 @@ candidate:
   close_px: 5            # 닫힘 (끊긴 얼룩 잇기)
   min_area_ratio: 0.002  # 영역(묶은 뒤) 면적이 A_g의 이 비율 미만이면 잡음으로 버림
   line_span: 0.85        # 유리 높이(폭)의 이 비율 이상이 '다른' 열(행) = 창틀·창살·비친 모서리 막대 → 제외 (두께 무관)
+  line_straight: false   #   true: 나란한 LSD 선분 [R32]이 유리 높이(폭)의 line_span 이상을 덮는 곧은 막대만 (구불구불한 빗물 줄은 남김) — T7 2차
   line_tol_ratio: 0.01   #   정면화 오차로 기운 막대 허용: 짧은 변 × 이 값(px)만큼 옆으로 번지게 해서 셈
   line_min_edge: 3.0     #   그중 경계 밝기 계단 |ΔL*| (line_edge_step px 건너) 평균이 이 이상인 것만 막대 — 노을·하늘 그라데이션 띠는 남김
   line_edge_step: 2      #   경계 계단을 재는 간격 (px)
   min_pane_ratio: 0.03   # 직선 구조로 나눈 유리 칸 중 유리의 이 비율 이상만 칸으로 (배경을 칸마다 따로 맞춤)
   line_dilate_px: 3      # 직선 구조 제외 마스크 팽창 (경계 잔여 제거)
   max_area_ratio: 0.85   # 후보가 유리의 이 비율을 넘으면 기준색 자체가 오염/배경이라 판단 → 국소 후보만 사용
+  max_region_ratio: null # T7 2차 (새): 국소 후보 영역 하나가 A_g × 이 값을 넘으면 실내 벽·창턱 등 다른 면으로 보고 반사 의심으로 뺌 (null = 끔, film엔 적용 안 함)
 
 # 반사광 제외 — 매우 밝고 채도 낮은 픽셀 (하늘·햇빛 반사). 팽창해서 후보에서 뺀다
 glare:
@@ -61,6 +66,8 @@ glare:
     min_edge: 5.0        #   윤곽 바깥 1px 띠의 L* 기울기 평균 (L*/px) — 반사광은 가장자리가 부드럽게 옅어져 작다
     min_solidity: 0.8    #   조각 면적 / 볼록 껍질 면적 (덩어리)
     max_area_ratio: 0.05 #   조각 면적 ≤ 유리 면적 × 이 값 (넓은 반사광은 날카로워도 반사로 본다)
+    reflection_exception: false # T7 2차: 반사 의심(윤곽·직선·색·큰 영역) 영역도 위 윤곽·solidity + 흰색 계열(기준보다 밝고 채도 ≤ C_max)이면 오염으로 남김 (새똥)
+    exception_max_area: null    #   그 예외의 면적 상한 (A_g 비율, null = 없음)
 
 # 물기(wet_glass) 제외 시도 — 물방울 = 작은 조각이 많고 조각마다 밝은 하이라이트(정반사)가 박혀 있음
 wet:
@@ -78,6 +85,17 @@ reflection:
   min_edge_density: 0.12 # 묶음 영역 안 윤곽 픽셀 비율 ≥ 이 값이면 반사 의심 (격자 {0.05, 0.08, 0.12} 중, 0.05·0.08은 dirt·stain 적중 하락)
   line_len_ratio: 0.15   # 긴 직선 = LSD 선분 길이 ≥ 짧은 변 × 이 값
   min_line_density: 0.01 # 묶음 영역 안 긴 직선 픽셀 비율 ≥ 이 값이면 반사 의심 (격자 {0.005, 0.01, 0.02, 0.04} 중 가운데 — 빗물 줄무늬도 직선이라 공격적인 값은 피함)
+  min_chroma_gain: null  # T7 2차 (새): 영역 평균 채도 C*ab − 기준색 채도 ≥ 이 값이면 반사 의심 (비친 나무·하늘의 색 번짐. 먼지·때는 채도가 거의 안 오름). null = 끔
+
+# 먼지막 (film) — T7 2차 (새). 유리 전체가 뿌옇게 된 정도를 픽셀마다 재서 기준 이상인 부분을 dust 영역 1개로 (덮인 비율 = 면적)
+# k_s는 film이 없을 때 추정 이미지 대비 ΔE의 중앙값 → grading.yaml ΔE 경계 (새 값 없음). 국소 영역·반사 의심·반사광은 빼고
+film:
+  enabled: false         # T7 2차 시도, 효과 없어 꺼 둠 (교차 검증에서 veil 0.7 / texture 15가 뽑혔으나 ρ 개선 없음)
+  metric: veil           # veil = 어두운 채널 사전 [R34] haze (0~1) / texture = 미세 질감 밀도 (|Laplacian| 국소 평균, 회색 0~255)
+  min: 0.5               # (새) 그 metric이 이 값 이상인 픽셀 = 먼지막
+  patch_px: 15           # 어두운 채널·국소 평균 창 (He et al. 기본값 [R34])
+  omega: 0.95            # 남길 안개 비율 ω [R34]
+  t0: 0.1                # 투과율 하한 [R34]
 
 # 유형 규칙 — 위에서부터 첫 일치 (heavy → grime → stain → dust)
 heavy:                   # 새똥·흙탕물: 짙고 덩어리진 영역

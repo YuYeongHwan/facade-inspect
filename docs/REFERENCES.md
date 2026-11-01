@@ -247,6 +247,14 @@ Roboflow Universe 사용자 업로드 데이터셋 (저자 이름 없음 — "Pr
 - 구현: OpenCV `cv2.createLineSegmentDetector`
 - 사용 부분: 단일 이미지 반사 의심 규칙의 긴 직선 밀도 (`analyze.py` `scene_structure`, `config/contamination.yaml` reflection)
 
+### [R34] 어두운 채널 사전 (Dark Channel Prior) 안개 추정
+- 저자: Kaiming He, Jian Sun, Xiaoou Tang
+- 연도: 2009 (CVPR), 확장판 2011
+- 제목: Single Image Haze Removal Using Dark Channel Prior. CVPR 2009 / IEEE TPAMI 33(12), 2341–2353 (2011)
+- 링크: https://doi.org/10.1109/TPAMI.2010.168
+- 사용 부분: T7 2차 먼지막(film) 시도 — haze = 1 − t, t = 1 − ω·dark(I/A), 패치 15 px·ω 0.95·t0 0.1은 논문 기본값
+  (`analyze.film_map`, `config/contamination.yaml` film). **효과 없어 꺼 둠** (docs/scoring.md "T7 2차")
+
 ## 색차·평가 일치도 (CSI 심각도·보정)
 
 ### [R22] CIE 15:2004 — Colorimetry (CIELAB, ΔE*ab)

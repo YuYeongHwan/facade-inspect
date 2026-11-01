@@ -270,3 +270,120 @@ def test_calib_sheet_script_parses(tmp_path):
     js.write_text(h.split("<script>")[1].split("</script>")[0], encoding="utf-8")
     r = subprocess.run([node, "--check", str(js)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_whole_image_facade():
+    from facade_cv.contamination.analyze import whole_image_facade
+    img = np.zeros((300, 600, 3), np.uint8)
+    f, tex, ppu, wins, det = whole_image_facade(img, "a.jpg", 10.0, 200)
+    assert tex.shape[:2] == (100, 200) and f.height == 10.0 and abs(f.width - 20.0) < 1e-6  # 비율 유지, 축소
+    (w,) = wins
+    assert w.id == "F1-R01-C01" and list(w.rect) == [0.0, 0.0, f.width, 10.0]  # 사진 전체 = 창 1개
+    assert w.observations[0].obs.corners.tolist() == [[0, 0], [599, 0], [599, 299], [0, 299]]  # 원본 픽셀 코너
+    assert det["windows"][0]["corners"] == w.observations[0].obs.corners.tolist()
+
+
+# ── T7 2차: film·곧은 막대·반사 의심 예외·ROI·깨끗한 기준 사진 ──
+
+def _set(cfg, **kv):
+    from facade_cv.contamination.evaluate import set_key
+    for k, v in kv.items():
+        cfg = set_key(cfg, k.replace("__", "."), v)
+    return cfg
+
+
+def _scene(h=300, w=400, seed=0):
+    """정렬용 질감 있는 배경 (사각형 여러 개 + 완만한 기울기)."""
+    rng = np.random.default_rng(seed)
+    img = np.dstack([np.tile(np.linspace(60, 160, w, dtype=np.float32), (h, 1))] * 3)
+    for _ in range(25):
+        x, y = rng.integers(0, w - 40), rng.integers(0, h - 40)
+        img[y:y + rng.integers(10, 40), x:x + rng.integers(10, 40)] = rng.integers(20, 230, 3)
+    return cv2.GaussianBlur(img, (0, 0), 1.0).clip(0, 255).astype(np.uint8)
+
+
+def test_reference_pair_truth_and_detection():
+    """깨끗한 사진을 살짝 움직인(호모그래피) 오염 사진에 정렬 → 차이 = 정답 마스크가 알려진 얼룩과 겹친다 (IoU ≥ 0.8)."""
+    from facade_cv.contamination.analyze import align_reference, analyze_crop, reference_truth
+    clean = _scene()
+    H = np.array([[1.0, 0.01, 5.0], [-0.008, 1.0, -4.0], [0, 0, 1]])
+    dirty = cv2.warpPerspective(clean, H, clean.shape[1::-1], borderMode=cv2.BORDER_REPLICATE)
+    known = np.zeros(clean.shape[:2], np.uint8)
+    for c in ((120, 100), (280, 200), (330, 80)):
+        cv2.circle(known, c, 18, 1, -1)
+    k = known.astype(bool)
+    before = dirty.copy()
+    dirty[k] = (0.45 * dirty[k] + 0.55 * np.array([150, 160, 165])).astype(np.uint8)  # 회갈색 먼지
+    k &= np.linalg.norm(lab(dirty) - lab(before), axis=2) >= GRADING["severity"]["delta_e"][0]  # 실제로 보이는 변화만 정답
+    al = align_reference(dirty, clean, CFG)
+    assert al is not None
+    gt = reference_truth(dirty, al, CFG, GRADING)
+    assert (gt & k).sum() / (gt | k).sum() >= 0.8
+    a = analyze_crop(dirty, None, CFG, GRADING, reference=al)
+    det = np.zeros(k.shape, bool)
+    for r in a.regions:
+        det |= r.mask
+    kk = k & a.glass
+    assert (det & kk).sum() / (det | kk).sum() >= 0.6
+
+
+def test_roi_window_polygon():
+    from facade_cv.contamination.analyze import roi_window
+    corners, occ = roi_window([[0.5, 0.1], [0.9, 0.5], [0.5, 0.9], [0.1, 0.5]], 101, 101)  # 마름모
+    assert corners.tolist() == [[10, 10], [90, 10], [90, 90], [10, 90]]
+    assert len(occ) == 4  # 외접 사각형 네 모서리 조각
+    corners, occ = roi_window([0.2, 0.2, 0.6, 0.8], 101, 101)
+    assert corners.tolist() == [[20, 20], [60, 20], [60, 80], [20, 80]] and occ == []
+
+
+def test_film_veil_adds_coverage_region():
+    """유리 전체가 고르게 뿌연 막(밝기 들림·대비 저하) — 배경 곡면에 흡수돼 국소 후보로는 안 잡히는 경우 (img_053 유형) —
+    이 film 영역(dust)으로 잡히고 덮인 비율이 면적이 된다. 먼지막 없는 원본보다 훨씬 넓다."""
+    from facade_cv.contamination.analyze import analyze_crop
+    img = _scene(seed=3)
+    img[..., 1:] //= 4  # 색이 진한 장면 (어두운 채널 사전 [R34]은 무채색 밝은 면을 안개로 본다 — 한계)
+    hazy = (0.4 * img + 0.6 * 215).astype(np.uint8)
+    cfg = _set(CFG, film__enabled=True, film__metric="veil", film__min=0.6)
+
+    def cover(im):
+        a = analyze_crop(im, None, cfg, GRADING)
+        film = [r for r in a.regions if r.features.get("film")]
+        assert all(r.type == "dust" for r in film) and len(film) <= 1
+        return film[0].mask.sum() / a.glass.sum() if film else 0.0
+
+    c_hazy, c_clean = cover(hazy), cover(img)
+    assert c_hazy > 0.6 and c_hazy > 2 * c_clean
+
+
+def test_straight_cover():
+    from facade_cv.contamination.analyze import _straight_cover
+    segs = np.array([[50, 0, 51, 60], [52, 50, 50, 100], [90, 0, 90, 100]], np.float32)  # 막대 띠 안 두 선분 + 띠 밖
+    assert _straight_cover(segs, 48, 54, 0, 100, 1) == pytest.approx(1.0)
+    assert _straight_cover(segs[:1], 48, 54, 0, 100, 1) == pytest.approx(0.6)
+    assert _straight_cover(segs[2:], 48, 54, 0, 100, 1) == 0.0
+
+
+def test_suspect_rules_and_white_exception():
+    """색 번짐(채도 상승) → 반사 의심, 큰 국소 영역 → 반사 의심, 날카로운 흰 덩어리 → 예외로 오염 유지."""
+    from facade_cv.contamination.analyze import analyze_crop
+    base = np.full((240, 320, 3), 120, np.uint8)
+    green = base.copy()
+    cv2.circle(green, (160, 120), 30, (110, 170, 100), -1)
+    green = cv2.GaussianBlur(green, (0, 0), 6)
+    cfg = _set(CFG, reflection__min_chroma_gain=8)
+    assert analyze_crop(green, None, CFG, GRADING).regions and not analyze_crop(green, None, cfg, GRADING).regions
+    from facade_cv.contamination.analyze import suspect_reason
+    m = np.zeros((100, 100), bool)
+    m[:, :40] = True
+    f = {"chroma_gain": 2.0}
+    assert suspect_reason(m, f, 10000, CFG) is None  # 기본값 = 둘 다 끔
+    assert suspect_reason(m, f, 10000, _set(CFG, candidate__max_region_ratio=0.3)) == "large"
+    assert suspect_reason(m, f, 10000, _set(CFG, candidate__max_region_ratio=0.5)) is None
+    assert suspect_reason(m, {"chroma_gain": 9.0}, 10000, _set(CFG, reflection__min_chroma_gain=8)) == "chroma"
+    white = base.copy()
+    cv2.circle(white, (160, 120), 40, (212, 212, 212), -1)  # 넓은 흰 덩어리 (새똥 근접, 반사광 L* 기준 아래)
+    cfg = _set(CFG, candidate__max_region_ratio=0.05)  # 큰 영역 규칙에 걸리게
+    assert not analyze_crop(white, None, cfg, GRADING).regions
+    cfg = _set(cfg, glare__keep_sharp__reflection_exception=True)
+    assert analyze_crop(white, None, cfg, GRADING).regions
+    assert not analyze_crop(white, None, _set(cfg, glare__keep_sharp__exception_max_area=0.05), GRADING).regions

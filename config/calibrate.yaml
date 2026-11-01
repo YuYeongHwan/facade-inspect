@@ -20,3 +20,8 @@ fit:
   kt_grid: [0.1, 1.0, 0.05]        # k_t 상대값 탐색 (시작, 끝, 간격) — 최댓값 1로 정규화 후 config k_t_max 배율로 환산
   max_cut_candidates: 120          # 기준값 후보 (CSI 정렬값 사이 중간점, 많으면 분위수로 줄임)
   passes: 3                        # 좌표 하강 반복
+# 사전 등록 비교 (evaluate compare) — docs/scoring.md "사전 등록". holdout 전에 고정, 바꾸지 않는다
+prereg:
+  alphas: [0.25, 0.5, 0.75]        # M2 = α·z(CLIP) + (1−α)·z(CSI), fit 5-fold 교차 검증으로 선택
+  bootstrap: 2000                  # holdout Spearman 95% 구간 (백분위), 이미지 단위 복원 추출
+  seed: 0

@@ -48,6 +48,7 @@ data/ runs/ cv/weights/ (gitignore — 가중치·MODEL_CARD.md는 cv/weights/)
 ```bash
 cd cv
 uv sync                      # open3d 포함: uv sync --extra open3d (macOS는 먼저 brew install libusb)
+                             # CLIP 참고 점수 clip_dirty: uv sync --extra clip (가중치 ~600 MB 첫 실행 때 받음, 없으면 null)
 uv run pytest                # 무거운 테스트 제외: uv run pytest -m "not slow"
 ```
 
@@ -70,6 +71,7 @@ uv run --project cv python -m facade_cv.contamination.analyze photos --images da
 #   --roi data/own/dirty_windows/web/roi.json   사진별 유리 ROI (사각형 [u0,v0,u1,v1] 또는 다각형, 0~1) — 앞유리만
 #   --reference pairs/<세트>/clean.jpg          같은 위치 깨끗한 사진 → ECC 정렬해 기준 + 정답 오염 마스크 (<out>/reference_labels.json)
 uv run --project cv python -m facade_cv.contamination.evaluate rank --grid "film.min=0.5,0.7"   # csi_calib fit 38장 5-fold Spearman (holdout은 --final 1회만)
+uv run --project cv python -m facade_cv.contamination.evaluate compare   # 사전 등록 비교 M0 CSI·M1 CLIP·M2 결합 (fit 교차 검증, holdout은 --final 1회만)
 uv run --project cv python -m facade_cv.contamination.evaluate t7                 # t7_dev 30장 평가 → runs/t7_dev/ (--labels 오염 polygon json → IoU)
 uv run --project cv python -m facade_cv.contamination.evaluate calib              # csi_calib 블라인드 평가지 → runs/csi_calib/sheet.html
 uv run --project cv python -m facade_cv.recon3d.run --frames runs/<id>/frames --detections runs/<id>/detect --out runs/<id> --debug

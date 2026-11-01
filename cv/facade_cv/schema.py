@@ -138,6 +138,7 @@ class Window(_Model):
     low_confidence: bool | None = None  # 단일 이미지 분석 (다시점으로 반사를 거르지 못함)
     analysis_mode: Literal["multi", "single"] | None = None
     reflection_suspects: list[ReflectionSuspect] | None = None  # CSI에서 뺀 반사 의심 영역
+    clip_dirty: Ratio | None = None  # CLIP 제로샷 p(dirty) [R35] — 참고 점수, CSI·level과 무관 (open_clip 없으면 null)
 
     @model_validator(mode="after")
     def _check(self) -> "Window":

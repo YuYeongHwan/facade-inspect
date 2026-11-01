@@ -122,6 +122,16 @@ overlay_alpha: 0.45      # overlay.png 유형 색 불투명도
 # 유형 색 — web/lib/palette.ts TYPE_COLORS와 같아야 한다 (cv/tests/test_contamination.py가 검사)
 type_colors: {dust: "#cbd5e1", stain: "#38bdf8", grime: "#a78bfa", heavy: "#ec4899"}
 
+# CLIP 제로샷 p(dirty) (facade_cv.contamination.clip_score) [R35][R36] — 창문 크롭 1장당 0~1 점수, result.json clip_dirty.
+# CSI·level에는 영향 없음 (참고 점수). open_clip 미설치면 null. ⚠️ 프롬프트·모델·온도는 데이터를 보기 전 고정 (2026-11-01) — 바꾸지 않는다
+clip:
+  enabled: true
+  model: ViT-B-32
+  pretrained: laion2b_s34b_b79k
+  temperature: 100.0     # CLIP logit scale (논문 학습값 상한)
+  dirty: ["a photo of a dirty window", "a photo of a window covered in dust and grime", "a photo of a stained, dirty glass pane"]
+  clean: ["a photo of a clean window", "a photo of a spotless, clear glass window", "a photo of a freshly cleaned glass pane"]
+
 # 검증 (facade_cv.contamination.evaluate) — 지표 정의용, 분석 결과에는 영향 없음
 eval:
   hit_min: 0.05          # dirt/stain 박스 면적의 이 비율 이상이 오염으로 잡히면 그 박스는 "적중"

@@ -18,6 +18,8 @@ heavy(심한 오염) 분류의 박스는 사진 전체를 덮어 "박스 적중"
 rank: runs/csi_calib/images (평가자가 본 crop 그대로) 재분석 → CSI와 사람 합의 등급의 Spearman. 기본 split=fit 38장만 읽고,
   --grid로 준 값 조합은 5-fold 교차 검증 (fold마다 나머지 4/5에서 Spearman 최대 조합을 골라 남은 1/5에서 잰다).
   holdout은 --final로만 (격자 없이 현재 config 한 번, 경계값 그대로의 QWK·완전 일치율 + 오버레이) — 튜닝 중 사용 금지
+compare: 사전 등록 비교 (docs/scoring.md "사전 등록") M0 CSI · M1 CLIP p(dirty) · M2 α·z(CLIP)+(1−α)·z(CSI) — fit 교차 검증 → runs/prereg/fit.md.
+  --final: holdout 17장 1회 (holdout.md가 있으면 거부) → Spearman·부트스트랩 구간·fit 경계 QWK·채택 규칙 결과
 calib: data/eval/csi_calib.csv 60장 → 평가자 3명용 블라인드 평가지. 이 결과로 contamination.yaml 임계값을 고치지 않는다
 (보정은 grading.yaml k_t·level 경계만, calibrate fit). 평가 단위 = 분석한 이미지 그대로 (공개 사진은 전체,
 외벽 사진은 T4로 검출한 창 중 분석 가능한 가장 큰 창 1개를 정면화). 출력 <out>/
@@ -39,6 +41,7 @@ import yaml
 
 from facade_cv.config import CONFIG_DIR, load_config
 from facade_cv.contamination.analyze import _bgr, analyze_crop, draw_overlay, rectify_quad, window_fields
+from facade_cv.contamination.clip_score import clip_dirty
 
 ROOT = CONFIG_DIR.parent
 BOX_COLORS = {"dirt": (0, 140, 255), "stain": (255, 190, 60), "glare": (255, 255, 255), "wet_glass": (255, 80, 200)}
@@ -103,7 +106,7 @@ def eval_public(img: np.ndarray, labels, cat: str, cfg: dict, grading: dict,
         det |= r.mask
     row = {"level": a.level, "csi": round(a.csi, 4), "wcov_pct": f["weighted_coverage_pct"],
            "det_ratio": round(det.sum() / a.glass.sum(), 3), "regions": len(a.regions),
-           "types": "/".join(sorted({r.type for r in a.regions}))}
+           "types": "/".join(sorted({r.type for r in a.regions})), "clip": clip_dirty([a.crop], cfg)[0]}
     dirt_boxes = [box_mask(b, shape) & a.glass for c, b in labels if c in DIRT]
     dirt_boxes = [m for m in dirt_boxes if m.any()]
     if cat in ("dirt", "stain", "heavy") and dirt_boxes:
@@ -135,7 +138,7 @@ def eval_facade(img: np.ndarray, seg, cfg: dict, grading: dict) -> tuple[dict, n
     dcfg = seg.cfg
     res = postprocess(img, seg.predict(img, conf=dcfg["conf"] * dcfg["fill_conf_ratio"]), dcfg)
     colors = {lv["level"]: _bgr(lv["color"]) for lv in grading["levels"]}
-    vis, levels, small = img.copy(), [], 0
+    vis, levels, small, crops = img.copy(), [], 0, []
     for w in res.windows:
         crop, _ = rectify_quad(img, w.corners, cfg["rectify"]["max_side"])
         if min(crop.shape[:2]) < cfg["rectify"]["min_side"]:  # 해상도 부족 → 미분석 (회색)
@@ -144,11 +147,14 @@ def eval_facade(img: np.ndarray, seg, cfg: dict, grading: dict) -> tuple[dict, n
             continue
         a = analyze_crop(crop, None, cfg, grading)
         levels.append(a.level)
+        crops.append(a.crop)
         q = np.round(w.corners).astype(np.int32)
         cv2.polylines(vis, [q], True, colors[a.level], 3)
         cv2.putText(vis, str(a.level), tuple(q[0] + [4, 22]), cv2.FONT_HERSHEY_SIMPLEX, 0.8, colors[a.level], 2)
     lv = np.array(levels)
-    return {"windows": len(lv), "too_small": small, "level": int(lv.max()) if len(lv) else None,
+    clip = [c for c in clip_dirty(crops, cfg) if c is not None]
+    return {"clip": round(float(np.mean(clip)), 4) if clip else None,  # 창별 p(dirty) 평균
+            "windows": len(lv), "too_small": small, "level": int(lv.max()) if len(lv) else None,
             "clean_ok": round(float((lv <= 2).mean()), 3) if len(lv) else None,
             "level_hist": "/".join(str(int((lv == k).sum())) for k in range(1, 6))}, vis
 
@@ -194,25 +200,25 @@ def _mean(rows, key):
 def summary_md(rows: list[dict]) -> str:
     """분류별 집계 + 이미지별 표."""
     cats = ["dirt", "stain", "heavy", "glare", "wet_glass", "clean"]
-    lines = ["| 분류 | 장수 | 박스 적중률 (dirt/stain 박스) | 검출 중 박스 안 비율 | 박스 안 오검출률 (glare/wet) | 평균 level | 깨끗한 창 level≤2 |",
-             "|---|---|---|---|---|---|---|"]
+    lines = ["| 분류 | 장수 | 박스 적중률 (dirt/stain 박스) | 검출 중 박스 안 비율 | 박스 안 오검출률 (glare/wet) | 평균 level | 깨끗한 창 level≤2 | CLIP p(dirty) 평균 |",
+             "|---|---|---|---|---|---|---|---|"]
     for c in cats:
         rs = [r for r in rows if r["category"] == c]
         hit, inbox = _mean(rs, "box_hit"), _mean(rs, "det_in_box")
         if c == "heavy" and hit != "—":  # 정답 박스가 사진 전체 → 검출률 아님
             hit, inbox = f"({hit})*", f"({inbox})*"
         lines.append(f"| {c} | {len(rs)} | {hit} | {inbox} | "
-                     f"{_mean(rs, 'false_in_box')} | {_mean(rs, 'level')} | {_mean(rs, 'clean_ok')} |")
+                     f"{_mean(rs, 'false_in_box')} | {_mean(rs, 'level')} | {_mean(rs, 'clean_ok')} | {_mean(rs, 'clip')} |")
     lines.append("")
     lines.append("\\* heavy: 정답 박스가 사진 전체라 검출률로 쓰지 않음 (박스의 5% 이상을 무엇이든 잡았는지만 — 참고값)")
     if any(r.get("iou") is not None for r in rows):
         lines.append(f"\n면적 IoU (polygon 정답 있는 {sum(r.get('iou') is not None for r in rows)}장): {_mean(rows, 'iou')}")
-    lines += ["", "| id | level | CSI | 가중 면적률% | 유리 중 검출 | 유형 | 박스 적중 | 박스 안 오검출 | 창(level 1/2/3/4/5) | 해상도 부족 창 |",
-              "|---|---|---|---|---|---|---|---|---|---|"]
+    lines += ["", "| id | level | CSI | 가중 면적률% | 유리 중 검출 | 유형 | 박스 적중 | 박스 안 오검출 | 창(level 1/2/3/4/5) | 해상도 부족 창 | CLIP |",
+              "|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         g = lambda k: "—" if r.get(k) is None else r[k]  # noqa: E731
         lines.append(f"| {r['id']} | {g('level')} | {g('csi')} | {g('wcov_pct')} | {g('det_ratio')} | {g('types')} | "
-                     f"{g('box_hit')} | {g('false_in_box')} | {g('level_hist')} | {g('too_small')} |")
+                     f"{g('box_hit')} | {g('false_in_box')} | {g('level_hist')} | {g('too_small')} | {g('clip')} |")
     return "\n".join(lines) + "\n"
 
 
@@ -340,6 +346,120 @@ def run_final(out: Path) -> str:
     return md
 
 
+# ── 사전 등록 비교 (docs/scoring.md "사전 등록") ── M0 CSI · M1 CLIP p(dirty) · M2 α·z(CLIP) + (1−α)·z(CSI)
+MODELS = ("M0", "M1", "M2")
+
+
+def model_scores(names: list[str], cfg: dict, grading: dict) -> dict[str, np.ndarray]:
+    imgs = [cv2.imread(str(CALIB / "images" / n)) for n in names]
+    clip = clip_dirty(imgs, cfg)
+    if None in clip:
+        raise RuntimeError("open_clip 없음 — uv sync --extra clip")
+    return {"M0": np.array([analyze_crop(i, None, cfg, grading).csi for i in imgs]), "M1": np.array(clip)}
+
+
+def zstats(s: dict[str, np.ndarray]) -> dict[str, tuple[float, float]]:
+    """fit 38장의 평균·표준편차 (라벨을 쓰지 않음). holdout에도 같은 값을 쓴다."""
+    return {k: (float(v.mean()), float(v.std()) or 1.0) for k, v in s.items()}
+
+
+def combined(s: dict[str, np.ndarray], z: dict, alpha: float) -> np.ndarray:
+    zz = {k: (s[k] - m) / sd for k, (m, sd) in z.items()}
+    return alpha * zz["M1"] + (1 - alpha) * zz["M0"]
+
+
+def cuts_for(score: np.ndarray, y: np.ndarray, fc: dict) -> tuple[float, list[float]]:
+    """fit에서 등급 경계 4개 (QWK 최대, calibrate.fit_cuts). 점수는 fit 최솟값을 빼서 ≥ 0으로 (fit_cuts 조건),
+    시작값 = 사람 등급 누적 비율 위치의 점수 분위수. (빼는 값, 경계)"""
+    from facade_cv.contamination.calibrate import fit_cuts
+
+    lo = float(score.min())
+    s = score - lo
+    q = [np.mean(y <= k) for k in range(1, 5)]
+    init = np.maximum.accumulate(np.quantile(s, np.clip(q, 0.01, 0.99))) + np.arange(4) * 1e-9
+    return lo, fit_cuts(s, y, init, fc)[0]
+
+
+def bootstrap_ci(a: np.ndarray, y: np.ndarray, n: int, seed: int) -> tuple[float, float]:
+    rng = np.random.default_rng(seed)
+    r = [spearman(a[i], y[i]) for i in (rng.integers(0, len(y), len(y)) for _ in range(n))]
+    return float(np.percentile(r, 2.5)), float(np.percentile(r, 97.5))
+
+
+def prereg_fit(cfg: dict, grading: dict) -> dict:
+    """fit 38장: 점수, z 통계, 교차 검증, α (fit 전체에서 Spearman 최대), 모델별 경계 4개."""
+    fc, pr = load_config("calibrate")["fit"], load_config("calibrate")["prereg"]
+    names, y = rank_items("fit")
+    s = model_scores(names, cfg, grading)
+    z = zstats(s)
+    table = np.array([combined(s, z, a) for a in pr["alphas"]])
+    cv = {k: cv_select(s[k][None], y, fc["folds"], fc["seed"]) for k in ("M0", "M1")}
+    cv["M2"] = cv_select(table, y, fc["folds"], fc["seed"])
+    alpha = pr["alphas"][cv["M2"][2]]
+    s["M2"] = table[cv["M2"][2]]
+    return {"names": names, "y": y, "s": s, "z": z, "cv": cv, "alpha": alpha,
+            "cuts": {k: cuts_for(s[k], y, fc) for k in MODELS}, "pr": pr}
+
+
+def run_compare(out: Path) -> str:
+    from facade_cv.contamination.calibrate import levels_of, qwk
+
+    cfg, grading = load_config("contamination"), load_config("grading")
+    f = prereg_fit(cfg, grading)
+    y, pr = f["y"], f["pr"]
+    lines = [f"fit {len(y)}장 · {load_config('calibrate')['fit']['folds']}-fold · M2 α 후보 {pr['alphas']}", "",
+             "| 모델 | 교차 검증 Spearman (fold 평균 ± sd) | fold별 | out-of-fold 모아서 | in-sample Spearman | in-sample 95% 구간 | 경계 4개 in-sample QWK |",
+             "|---|---|---|---|---|---|---|"]
+    for k in MODELS:
+        rhos, picks, best, pooled = f["cv"][k]
+        lo, cuts = f["cuts"][k]
+        ci = bootstrap_ci(f["s"][k], y, pr["bootstrap"], pr["seed"])
+        lines.append(f"| {k} | {np.mean(rhos):.3f} ± {np.std(rhos):.3f} | {[round(r, 3) for r in rhos]} | {pooled:.3f} | "
+                     f"{spearman(f['s'][k], y):.3f} | [{ci[0]:.2f}, {ci[1]:.2f}] | {qwk(y, levels_of(f['s'][k] - lo, cuts)):.3f} |")
+    lines += ["", f"- M2 fold별 α: {[pr['alphas'][p] for p in f['cv']['M2'][1]]} → fit 38장 전체에서 고른 α = **{f['alpha']}**",
+              f"- z 통계 (fit 38장): CSI 평균 {f['z']['M0'][0]:.4f} sd {f['z']['M0'][1]:.4f} · CLIP 평균 {f['z']['M1'][0]:.3f} sd {f['z']['M1'][1]:.3f}",
+              *[f"- {k} 경계 (점수 − {f['cuts'][k][0]:.4f}): {[round(c, 4) for c in f['cuts'][k][1]]}" for k in MODELS]]
+    md = "\n".join(lines) + "\n"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "fit.md").write_text(md, encoding="utf-8")
+    return md
+
+
+def adopt(rho: dict[str, float], ci: dict[str, tuple[float, float]]) -> str:
+    """사전 등록 채택 규칙: holdout Spearman 최고 모델이 M0가 아니고 그 구간 하한 > M0 holdout Spearman이면 채택, 아니면 M0."""
+    best = max(MODELS, key=lambda k: (rho[k], -MODELS.index(k)))  # 동점이면 단순한 쪽 (M0 < M1 < M2)
+    return best if best != "M0" and ci[best][0] > rho["M0"] else "M0"
+
+
+def run_compare_final(out: Path) -> str:
+    """holdout 17장 1회. fit에서 정한 z 통계·α·경계를 그대로 적용. 이미 실행했으면 거부."""
+    from facade_cv.contamination.calibrate import levels_of, qwk
+
+    if (out / "holdout.md").exists():
+        raise RuntimeError(f"{out / 'holdout.md'} 있음 — holdout은 한 번만 (사전 등록)")
+    cfg, grading = load_config("contamination"), load_config("grading")
+    f = prereg_fit(cfg, grading)
+    pr = f["pr"]
+    names, y = rank_items("holdout")
+    s = model_scores(names, cfg, grading)
+    s["M2"] = combined(s, f["z"], f["alpha"])
+    rho = {k: spearman(s[k], y) for k in MODELS}
+    ci = {k: bootstrap_ci(s[k], y, pr["bootstrap"], pr["seed"]) for k in MODELS}
+    lv = {k: levels_of(s[k] - f["cuts"][k][0], f["cuts"][k][1]) for k in MODELS}
+    pick = adopt(rho, ci)
+    lines = [f"holdout {len(y)}장 (1회 실행) · M2 α = {f['alpha']} (fit에서 고정) · 부트스트랩 {pr['bootstrap']}회 seed {pr['seed']}", "",
+             "| 모델 | holdout Spearman | 95% 구간 | QWK (fit 경계) | 완전 일치 |", "|---|---|---|---|---|",
+             *[f"| {k} | {rho[k]:.3f} | [{ci[k][0]:.2f}, {ci[k][1]:.2f}] | {qwk(y, lv[k]):.3f} | {np.mean(lv[k] == y):.0%} |" for k in MODELS],
+             "", f"**사전 등록 규칙에 따른 결과: {pick}**" + (" — M0 유지, CLIP은 참고 점수로 표시" if pick == "M0" else " 채택"), "",
+             "| 이미지 | 사람 | CSI | CLIP | M2 | level M0/M1/M2 |", "|---|---|---|---|---|---|",
+             *[f"| {n} | {y[i]} | {s['M0'][i]:.4f} | {s['M1'][i]:.3f} | {s['M2'][i]:.2f} | {lv['M0'][i]}/{lv['M1'][i]}/{lv['M2'][i]} |"
+               for i, n in enumerate(names)]]
+    md = "\n".join(lines) + "\n"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "holdout.md").write_text(md, encoding="utf-8")
+    return md
+
+
 app = typer.Typer(add_completion=False)
 
 
@@ -452,6 +572,13 @@ def rank(grid: list[str] = typer.Option([], help="튜닝 격자 'key=v1,v2' (콜
         print(run_final(out))
     else:
         print(run_rank(grid, out, set_, overlays).split("\n\n| 조합")[0])
+
+
+@app.command()
+def compare(out: Path = typer.Option(ROOT / "runs/prereg"),
+            final: bool = typer.Option(False, "--final", help="holdout 17장 1회 (사전 등록 커밋 후에만)")) -> None:
+    """사전 등록 비교 M0 CSI · M1 CLIP · M2 결합 — fit 교차 검증 (기본) 또는 holdout 1회 (--final)."""
+    print(run_compare_final(out) if final else run_compare(out))
 
 
 @app.command()

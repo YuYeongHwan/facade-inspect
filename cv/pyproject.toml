@@ -23,6 +23,9 @@ dependencies = [
 open3d = [
     "open3d>=0.20.0",
 ]
+clip = [
+    "open-clip-torch>=3.3.0",
+]
 
 [dependency-groups]
 dev = [

@@ -112,6 +112,7 @@ export const Window = z
     low_confidence: z.boolean().nullish(), // 단일 이미지 분석
     analysis_mode: z.enum(["multi", "single"]).nullish(),
     reflection_suspects: z.array(ReflectionSuspect).nullish(), // CSI에서 뺀 반사 의심 영역
+    clip_dirty: z.number().min(0).max(1).nullish(), // CLIP 제로샷 p(dirty) — 참고 점수, CSI·level과 무관
   })
   .superRefine((w, ctx) => {
     const m = WINDOW_ID_RE.exec(w.id)?.groups;

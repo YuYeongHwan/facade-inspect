@@ -280,6 +280,24 @@ Roboflow Universe 사용자 업로드 데이터셋 (저자 이름 없음 — "Pr
 - 사용 부분: T7 2차 먼지막(film) 시도 — haze = 1 − t, t = 1 − ω·dark(I/A), 패치 15 px·ω 0.95·t0 0.1은 논문 기본값
   (`analyze.film_map`, `config/contamination.yaml` film). **효과 없어 꺼 둠** (docs/scoring.md "T7 2차")
 
+### [R35] CLIP (Contrastive Language-Image Pre-training)
+- 저자: Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, Ilya Sutskever
+- 연도: 2021
+- 제목: Learning Transferable Visual Models From Natural Language Supervision. ICML 2021 (PMLR 139, 8748–8763)
+- 링크: https://arxiv.org/abs/2103.00020
+- 사용 부분: 제로샷 분류 방식 — 클래스마다 프롬프트 여러 개의 텍스트 임베딩 평균(prompt ensembling, 논문 3.1.4),
+  이미지·텍스트 코사인 유사도 × 온도 100의 softmax. 창문 크롭의 p(dirty) = "더러운 창" 대 "깨끗한 창" 확률
+  (`contamination/clip_score.py`, `config/contamination.yaml` clip). 프롬프트 6개는 자체 작성 (데이터를 보기 전 고정)
+
+### [R36] OpenCLIP / LAION-2B — ViT-B-32 laion2b_s34b_b79k 가중치
+- 저자: Gabriel Ilharco, Mitchell Wortsman, Ross Wightman 외 (OpenCLIP); Christoph Schuhmann 외 (LAION-5B); Mehdi Cherti 외 (재현 실험)
+- 연도: 2021 (코드), 2022 (LAION-5B, NeurIPS Datasets and Benchmarks), 2023 (Cherti et al., CVPR)
+- 제목: OpenCLIP (https://github.com/mlfoundations/open_clip, MIT 라이선스) · LAION-5B: An open large-scale dataset for training next generation
+  image-text models · Reproducible scaling laws for contrastive language-image learning
+- 링크: https://doi.org/10.5281/zenodo.5143773 · https://arxiv.org/abs/2210.08402 · https://arxiv.org/abs/2212.07143
+- 사용 부분: `open_clip_torch` 패키지 (선택 의존성 `uv sync --extra clip`)와 사전학습 가중치 ViT-B-32 `laion2b_s34b_b79k`
+  (LAION-2B 영어 부분, 34B 샘플 학습, ~600 MB, Hugging Face에서 받음). 미세조정 없음
+
 ## 색차·평가 일치도 (CSI 심각도·보정)
 
 ### [R22] CIE 15:2004 — Colorimetry (CIELAB, ΔE*ab)

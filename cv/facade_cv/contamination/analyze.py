@@ -24,6 +24,7 @@ import numpy as np
 import typer
 
 from facade_cv.config import load_config
+from facade_cv.contamination.clip_score import clip_dirty
 from facade_cv.contamination.grade import (
     Region,
     cleaning_level,
@@ -605,6 +606,7 @@ def analyze_run(run_dir: str | Path, cfg: dict | None = None, grading: dict | No
         d = run_dir / "windows" / w["id"]
         save_window_images(a, d, cfg)
         w.update(window_fields(a, mode, mode == "single", cfg, grading))
+        w["clip_dirty"] = clip_dirty([a.crop], cfg)[0]  # 참고 점수 [R35] (CSI·level 무관)
         if mode == "multi":
             w["num_views"] = mv.n_used  # 중앙값 스택에 실제로 쓴 관측 수 (recon의 관측 수 대신)
         w["images"] = {"crop": f"windows/{w['id']}/crop.jpg", "heatmap": f"windows/{w['id']}/heatmap.png",

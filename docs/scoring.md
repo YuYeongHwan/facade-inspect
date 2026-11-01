@@ -271,6 +271,71 @@ demo_web level (heavy 새똥 web_01~05 / wet_glass 14·15 / clean 16, `--whole-i
   정답 오염 마스크 `reference_labels.json` → evaluate `--labels` 면적 IoU). `--reference`는 합성 테스트만 통과 (정답 IoU ≥ 0.8) — 실제 사진 쌍
   `data/own/dirty_windows/pairs/<세트>/{clean.jpg, dirty_*.jpg}` 촬영 필요
 
+### CLIP 제로샷 오염 점수와 사전 등록 비교 (2026-11-01)
+
+창문 크롭 1장마다 CLIP [R35] (OpenCLIP ViT-B-32 `laion2b_s34b_b79k` [R36], 미세조정 없음) 제로샷 p(dirty)를 계산해
+result.json `clip_dirty` (0~1, 선택 필드)에 남긴다 (`contamination/clip_score.py`, `config/contamination.yaml` clip).
+p(dirty) = softmax(100 × [cos(이미지, 더러운 창 프롬프트 3개 평균), cos(이미지, 깨끗한 창 프롬프트 3개 평균)])의 첫 값.
+프롬프트 6개는 데이터를 보기 전에 정했고 **바꾸지 않는다** (본 뒤 바꾸면 과적합):
+- dirty: "a photo of a dirty window" · "a photo of a window covered in dust and grime" · "a photo of a stained, dirty glass pane"
+- clean: "a photo of a clean window" · "a photo of a spotless, clear glass window" · "a photo of a freshly cleaned glass pane"
+
+CSI·level에는 영향이 없다 (참고 점수). open_clip이 없으면 (`uv sync --extra clip` 안 함) null. 처리 시간 ≈ 10 ms/크롭 (M-series MPS, 모델 로드 제외).
+한계: 물방울·반사도 "더럽다"로 볼 수 있다 (t7_dev wet_glass 평균 0.71), 위치·면적을 알려주지 않는다, 창문 밖 장면(차 전체·유리 지붕)이 많이 찍힌 사진에선 낮게 나온다.
+
+#### 사전 등록 (holdout 실행 전에 커밋, 2026-11-01)
+
+탐색 단계에서 CLIP을 fit 38장에 한 번 적용해 봤다 (ρ 0.37, CSI 0.07). 아래 규칙은 그 뒤, holdout 17장을 열기 전에 고정했다.
+holdout 17장은 이 규칙으로 **한 번만** 쓴다 (`python -m facade_cv.contamination.evaluate compare --final`, `runs/prereg/holdout.md`가 있으면 다시 실행 거부).
+
+- **모델 3개**
+  - M0: CSI (현재 config/contamination.yaml·grading.yaml 그대로)
+  - M1: CLIP 제로샷 p(dirty)
+  - M2: 결합 = α·z(CLIP) + (1−α)·z(CSI). z는 fit 38장의 평균·표준편차로 표준화 (라벨을 쓰지 않음, holdout에도 같은 값).
+    α ∈ {0.25, 0.5, 0.75} (config/calibrate.yaml prereg) — fit 38장 5-fold 교차 검증 (seed 0)은 성능 추정용, holdout에 쓸 α는 fit 38장 전체에서 Spearman 최대
+- **입력**: `runs/csi_calib/images` (평가자가 본 크롭 그대로)
+- **지표**
+  - 주: holdout 17장 Spearman (점수 ↔ 사람 합의 등급) + 부트스트랩 95% 구간 (이미지 단위 복원 추출 2000회, seed 0, 백분위)
+  - 보조: 등급 일치 QWK [R24]·완전 일치율. 등급 경계 4개는 모델마다 fit 38장에서 QWK 최대로 정한다 (`calibrate.fit_cuts`,
+    시작값 = 사람 등급 누적 비율 위치의 점수 분위수, 점수는 fit 최솟값을 빼서 사용) — holdout에 그대로 적용
+- **채택 규칙**: holdout Spearman이 가장 높은 모델이 M0가 아니고, 그 모델의 95% 구간 하한이 M0의 holdout Spearman보다 높으면 그 모델을 채택.
+  아니면 M0 (CSI 등급) 유지 + CLIP은 참고 점수로 표시. (동점이면 단순한 쪽: M0 → M1 → M2)
+- 채택돼도 최종 등급에 무엇을 쓸지는 결과를 보고 따로 정한다 (그전까지 웹 등급은 CSI)
+
+fit 38장 결과 (`evaluate compare`, `runs/prereg/fit.md`):
+
+| 모델 | 교차 검증 ρ (fold 평균 ± sd) | out-of-fold 모은 ρ | in-sample ρ | in-sample 95% 구간 | 경계 4개 in-sample QWK |
+|---|---|---|---|---|---|
+| M0 CSI | 0.083 ± 0.43 | 0.068 | 0.068 | [−0.29, 0.40] | 0.281 |
+| M1 CLIP | 0.269 ± 0.40 | 0.373 | 0.373 | [0.05, 0.64] | 0.504 |
+| M2 결합 | 0.177 ± 0.30 | 0.250 | 0.358 | [0.03, 0.64] | 0.465 |
+
+M2 fold별 α [0.75, 0.5, 0.75, 0.75, 0.75] → holdout용 α = 0.75. M0·M1은 조정할 값이 없어 out-of-fold = in-sample.
+fold 7~8장이라 fold별 ρ가 −0.45 ~ +0.70으로 흔들린다.
+
+크롭 기준 p(dirty) (보조, `runs/prereg/`): t7_dev는 공개 근접 사진 = 사진 전체가 크롭, 깨끗한 창(CMP·b04)은 T4 검출 창 크롭들의 평균.
+demo_web은 `--whole-image` (사진 = 크롭), web_01~03은 앞유리 ROI 크롭도 같이.
+
+| t7_dev 분류 | 평균 | 이미지별 |
+|---|---|---|
+| dirt | 0.79 | 0.16 0.90 0.94 0.99 0.98 |
+| stain | 0.67 | 0.91 0.49 0.93 0.52 0.50 |
+| heavy | 0.80 | 0.85 0.47 0.86 0.85 0.97 |
+| glare | 0.09 | 0.00 0.46 0.01 0.00 0.00 |
+| wet_glass | 0.71 | 0.95 0.59 0.99 0.55 0.48 |
+| clean (창 크롭 평균) | 0.57 | 0.77 0.55 0.29 0.73 0.53 |
+
+| demo_web 분류 | 이미지별 (사진 전체) | 앞유리 ROI 크롭 |
+|---|---|---|
+| heavy 새똥 01~05 | 0.10 0.91 0.39 0.55 0.36 | 0.79 0.72 0.56 (01~03) |
+| grime 08 12 13 | 0.89 0.92 0.97 | |
+| dust 07 09 10 11 | 0.04 0.16 0.83 0.30 | |
+| stain 06 | 0.01 | |
+| wet_glass 14 15 | 0.37 0.37 | |
+| clean 16 | 0.00 | |
+
+holdout 결과: (실행 후 기록)
+
 ## 보정
 
 사람이 매긴 청소 우선순위(1~5)에 CSI level이 가장 잘 맞도록 **level 경계 4개와 k_t**를 고른다.

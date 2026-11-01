@@ -39,7 +39,7 @@ fixtures/           목업 run 디렉토리 (result.json, building.glb, facades/
   make_mock.py      목업 재생성 스크립트
 edge/raspberrypi/   드론 탑재 송출·녹화 스크립트 (미검증 — setup.md)
 server/             FastAPI (미구현)
-web/                Next.js 대시보드 — 검사 결과 3D·창문 상세, 검출 뷰어 (실행법은 web/README.md)
+web/                Next.js 대시보드 — 검사 결과 2D 외벽 지도(메인)·3D·청소 작업 목록(CSV)·창문 상세, 검출 뷰어 (실행법은 web/README.md)
 data/ runs/ cv/weights/ (gitignore — 가중치·MODEL_CARD.md는 cv/weights/)
 ```
 
@@ -339,6 +339,21 @@ uv run --project cv python -m facade_cv.contamination.calibrate fit --regions ru
 - 검증: `pytest cv/tests/test_contamination.py` (합성 얼룩·흰 덩어리·반사·다시점), `evaluate t7` (t7_dev 30장, `runs/t7_dev/summary.md`)
 - 보정 준비: `evaluate calib` → `runs/csi_calib/` (images/·regions.json·sheet.html은 평가용, pred.csv·key.csv는 평가자에게 주지 않음).
   평가자 csv를 `data/ratings/`에 두고 `calibrate fit --regions runs/csi_calib/regions.json`. 이 결과로 contamination.yaml을 고치지 않는다
+
+## 시연 순서 (11/18 학술엑스포)
+
+준비: `cd web && pnpm sync-data && pnpm dev` → http://localhost:3000 (노트북 1366×768에서 확인함)
+
+1. **b04 — 실제 드론 영상 + 다시점 반사 제거** (`t7_b04`). 빨간 창 장면에는 쓰지 않는다 (b04의 4·5단계는 반사·덤불·벽면 오검출, 아래 메모)
+   - 첫 화면 = 외벽 지도. 요약 바의 "분석 신뢰도: 다시점 31 · 단일 114"를 짚고 → 지도 툴바 **"다시점만 보기"** 켜기 (단일 창은 회색 윤곽, 요약 숫자가 다시점 기준으로 바뀜)
+   - 대표 사례 **F3-R02-C45** (나무 반사 창, 단일 3단계 → 다시점 1단계): 외벽 탭 F3 → 2층 45열 클릭 (또는 작업 목록에서 ID 클릭).
+     상세에 "다시점 4장 정렬" · 1단계. 단일 모드에서 반사를 오염으로 잡았던 비교 그림 = `runs/t7_b04/compare_reflection.jpg` 첫 줄
+     (전체 표 `runs/t7_b04/compare_single_multi.md`)
+   - 청소 작업 목록 탭 → "신뢰도 높은 것만 (다시점)" → CSV 내보내기
+2. **사진 데모 — 빨간 창 장면**: 근접 오염 사진 결과로 첫 화면 → 빨간 창 클릭 → 상세(오염 영역·CSI 근거) → 작업 목록 CSV
+
+메모 (T7 미수정, 원인만 기록): b04 유일한 5단계 F2-R01-C11 = 하늘·건물 반사 경계(heavy) + 창 앞 덤불(dust, b04 검출에 가림 마스크 없음)
++ 창틀 가장자리(grime, 코너 어긋남) → 오검출 (`runs/g3_screens/check_F2-R01-C11.png`). 4단계 12개도 벽면 오검출(F2-R01-C19~21)·나무 반사.
 
 ## 목업 (fixtures/)
 

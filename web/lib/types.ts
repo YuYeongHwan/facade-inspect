@@ -188,6 +188,24 @@ export type ContaminationType = z.infer<typeof ContaminationType>;
 export type Facade = z.infer<typeof Facade>;
 export type Contamination = z.infer<typeof Contamination>;
 export type Window = z.infer<typeof Window>;
+
+// --- 창문 파생값 (화면용, 스키마 아님) ---
+/** 오염 면적 % (배수 없음). 이전 result.json엔 raw_coverage_pct가 없으므로 영역 면적비 합으로 대신. 미분석 null */
+export const rawCoveragePct = (w: Window): number | null =>
+  w.raw_coverage_pct ?? (w.type_ratios ? Math.min(100, Object.values(w.type_ratios).reduce((a, b) => a + b, 0) * 100) : null);
+/** 면적비가 가장 큰 오염 유형 (없으면 null) */
+export const mainType = (w: Window): ContaminationType | null => {
+  if (!w.type_ratios) return null;
+  const [t, r] = CONTAMINATION_TYPES.map((t) => [t, w.type_ratios![t]] as const).reduce((a, b) => (b[1] > a[1] ? b : a));
+  return r > 0 ? t : null;
+};
+/** 청소 우선순위 정렬: level 내림차순 → CSI 내림차순 → 미분석은 맨 뒤 */
+export const byPriority = (a: Window, b: Window) =>
+  (b.cleaning_level ?? 0) - (a.cleaning_level ?? 0) || (b.csi ?? -1) - (a.csi ?? -1) || a.id.localeCompare(b.id);
+export type Confidence = "multi" | "single" | "unanalyzed";
+export const confidenceOf = (w: Window): Confidence =>
+  w.cleaning_level === null ? "unanalyzed" : w.low_confidence || w.analysis_mode === "single" ? "single" : "multi"; // 빗금 표시와 같은 기준
+export const CONFIDENCE_LABELS: Record<Confidence, string> = { multi: "다시점", single: "단일 (신뢰도 낮음)", unanalyzed: "미분석" };
 export type InspectionResult = z.infer<typeof InspectionResult>;
 
 // detections.json — cv/facade_cv/detect/postprocess.py PostResult.to_dict() + detect/run.py manifest

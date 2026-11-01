@@ -16,7 +16,7 @@ pnpm typecheck && pnpm lint
 
 | 화면 | 데이터 |
 |---|---|
-| `/` | 동기화된 검사 결과·검출 실행 링크 (임시 첫 화면) |
+| `/` | 검사 결과 (실제 runs/ 최신순 · 예시 데이터=목업 따로)·검출 실행 링크 |
 | `/inspections/[id]` | `public/data/inspections/<id>/result.json` (목업: `/inspections/insp_mock`) |
 | `/detections?run=<run>&frame=<image>` | `public/data/detections/<run>/detections.json` + 프레임·정면화 이미지 |
 
@@ -47,11 +47,16 @@ app/
 components/
   ui.tsx                      LevelBadge(청소 우선순위, 5 우선 청소는 채운 빨강+글로우), ToggleChip, Status(로딩/에러)
   inspection/
-    InspectionView.tsx        상태(선택·hover·level 표시) 보유, 레이아웃 (모바일: 3D 위·리스트 아래)
-    SummaryBar.tsx            전체 수, 평균 점수, 우선 청소 수(강조), level 분포 막대, level별 표시 토글
+    InspectionView.tsx        상태(선택·hover·level 표시·다시점만) 보유, 탭: 외벽 지도(기본) · 3D 보기 · 청소 작업 목록
+    SummaryBar.tsx            전체 수, 우선 청소·청소 필요 수(크게), 분석 신뢰도(다시점·단일·미분석), level 분포 막대,
+                              level 칩·"4~5단계만". 다시점만 켜면 숫자를 다시점 창 기준으로
+    FacadeMap.tsx             2D 외벽 지도: 외벽(사진 결과는 "사진 N") 탭, 실제 배치(정사영 텍스처 위 facade_rect, y = height − v) |
+                              격자(층×열 같은 칸) — 창 폭이 16px 미만이면 격자로 시작, 층·열 번호 눈금(크기·단위는 표시 안 함 — 스케일 미상),
+                              단일 = 빗금, 필터·다시점만으로 뺀 창 = 회색 윤곽, hover 툴팁, 휠 확대·드래그 이동·맞춤 (라이브러리 없이 SVG viewBox)
+    WorkList.tsx              청소 우선순위 표 (level↓ → CSI↓), 주요 유형·신뢰도, CSV "청소 작업 지시서" (UTF-8 BOM, 화면과 같은 필터)
     BuildingViewer.tsx        R3F: building.glb + 외벽 텍스처 평면 + 창문 패널(level 색, 5는 진하게, 법선 방향으로 띄움), 범례(score 구간),
                               hover 툴팁, 클릭 시 창문 정면으로 카메라 이동(CameraRig), 전체 보기
-    WindowList.tsx            정렬(ID·층·우선순위·점수, 기본 우선순위↓ → 점수↓)·검색, 3D와 선택/hover 연동
+    WindowList.tsx            (3D 탭) 정렬(ID·층·우선순위·점수, 기본 우선순위↓ → 점수↓)·검색, 3D와 선택/hover 연동
     WindowDetail.tsx          drawer: crop/히트맵/오염 polygon(SVG) 레이어 토글, polygon hover 유형·면적비,
                               유형별 면적 막대, 우선순위 배지, 관측 뷰 수 (Esc로 닫기)
   detections/

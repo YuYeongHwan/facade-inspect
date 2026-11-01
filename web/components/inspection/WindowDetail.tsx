@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { LevelBadge, ToggleChip } from "@/components/ui";
 import { inspectionAssetUrl } from "@/lib/api";
 import { LEVEL_STYLES, pct, SEVERITY_LABELS, TYPE_COLORS, TYPE_LABELS } from "@/lib/palette";
-import { CONTAMINATION_TYPES, type CsiParams, csiTerms, type Window } from "@/lib/types";
+import { CONTAMINATION_TYPES, type CsiParams, csiTerms, rawCoveragePct, type Window } from "@/lib/types";
 
 type Layer = "crop" | "heatmap" | "polygons";
 const LAYERS: { key: Layer; label: string }[] = [
@@ -46,8 +46,7 @@ export default function WindowDetail({
   const maxRatio = ratios ? Math.max(0.05, ...Object.values(ratios)) : 1;
   const heatmap = w.images.heatmap;
   const layerOptions = heatmap ? LAYERS : LAYERS.filter((l) => l.key !== "heatmap");
-  // 오염 면적 (배수 없음). 이전 result.json엔 raw_coverage_pct가 없으므로 영역 면적비 합으로 대신한다
-  const rawPct = w.raw_coverage_pct ?? (ratios ? Math.min(100, Object.values(ratios).reduce((a, b) => a + b, 0) * 100) : null);
+  const rawPct = rawCoveragePct(w);
   const kMul = csiParams ? csiParams.severity_max * Math.max(...Object.values(csiParams.weights)) : null;
 
   return (

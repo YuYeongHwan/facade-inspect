@@ -246,5 +246,66 @@ CSI의 입력(영역별 A_j·종류·ΔE)을 정면화 창문 이미지에서 �
 ### 보정 결과
 
 <!-- calibration:start -->
-(아직 없음 — 사람 평가 후 `calibrate fit --doc docs/scoring.md`가 이 절을 채운다)
+보정 실행: 2026-11-01 13:06 · 평가자 3명 · 보정에 쓴 이미지 38장 · holdout 17장
+
+**평가자 간 일치도** (quadratic weighted kappa [R24], 해석 기준 [R25])
+
+| | ImJaeHyeon | JoHyeongJin | YuYeongHwan | 나머지 합의 대비 |
+|---|---|---|---|---|
+| ImJaeHyeon (55장) | — | 0.930 | 0.945 | 0.939 |
+| JoHyeongJin (55장) | 0.930 | — | 0.945 | 0.933 |
+| YuYeongHwan (55장) | 0.945 | 0.945 | — | 0.951 |
+
+평균 쌍별 QWK 0.940
+
+**CSI ↔ 합의 등급 일치도**
+
+| 설정 | QWK |
+|---|---|
+| 보정 전 초기값 (config) | 0.085 |
+| 보정값 (보정에 쓴 이미지에 맞춤) | 0.206 |
+| 보정값 5-fold 교차 검증 (held-out) | 0.044 ± 0.390 |
+| **holdout 17장 — 보정 전 초기값** | 0.207 (완전 일치 35%) |
+| **holdout 17장 — 보정값** | 0.227 (완전 일치 35%) |
+
+⚠️ 이미지 38장 — 100장 미만이라 보정값이 과적합됐을 수 있다. 교차 검증 값을 기준으로 판단할 것
+
+**보정값**
+
+| 항목 | 초기값 | 보정값 |
+|---|---|---|
+| k_t dust | 0.5 | 0.5 |
+| k_t stain | 0.8 | 0.8 |
+| k_t grime | 1.0 | 1.0 |
+| k_t heavy | 1.5 | 1.5 |
+| level 2 하한 (min_csi) | 0.009 | 0.0230 |
+| level 3 하한 (min_csi) | 0.022 | 0.0242 |
+| level 4 하한 (min_csi) | 0.044 | 0.0644 |
+| level 5 하한 (min_csi) | 0.089 | 0.0735 |
+
+![혼동 행렬](img/calibration_confusion.png)
+
 <!-- calibration:end -->
+   csi_calib 평가지(55장, 미리 정한 fit/holdout 분할) — k_t는 고정하고 경계 4개만 fit으로 맞춘 뒤 holdout으로 평가:
+   ```bash
+   uv run --project cv python -m facade_cv.contamination.calibrate fit --regions runs/csi_calib/regions.json \
+       --split runs/csi_calib/key.csv --cuts-only --doc docs/scoring.md
+   ```
+   평가지(`runs/csi_calib/sheet.html`)로 모은 결과는 평가자별 `data/ratings/<이름>.csv` (image,rating,time)로 둔다.
+   합본 `ratings_all.csv`처럼 rating 열이 없는 csv는 읽지 않는다
+
+**csi_calib 1차 보정 해석과 한계 (2026-11-01, 평가자 3명 × 55장)**
+- **결론: 보정 경계값을 config/grading.yaml에 반영하지 않는다.** holdout QWK 0.207 → 0.227, 완전 일치 35% → 35%로 차이가 없고,
+  5-fold 교차 검증 0.044 ± 0.390은 우연 수준이다. 보정 경계도 level 2·3 하한이 0.0230·0.0242로 붙어 2단계 구간이 거의 사라지고
+  level 4·5 하한도 0.0644·0.0735로 붙는다 (과적합)
+- 원인은 경계가 아니라 **CSI 자체가 사람 판단과 순위가 맞지 않는 것**이다 (Spearman ρ = 0.09, p = 0.52, 55장)
+  - CSI = 0인 이미지 23장 중 사람 합의 3단계 이상이 11장, 4~5단계가 5장 (img_009·022·034·039·053 — 넓게 퍼진 먼지막·때.
+    T7 단일 모드는 "깨끗한 유리" 기준색과 차이 나는 국소 영역만 잡으므로 유리 전체가 고르게 더러우면 기준색 자체가 더러운 색이 된다)
+  - 사람 1단계인데 CSI ≥ 0.044: img_001 (CMP 외벽, 0.087), img_008 (b04, 0.056), img_054 (0.164) — 창틀·실내·반사를 오염으로 잡음
+  - → 다음 작업은 경계 보정이 아니라 T7 검출(전면 오염막, 반사·실내 제외) 개선. 개선 후 같은 평가로 다시 보정한다 (사람 평가는 재사용 가능)
+- **평가자 독립성 한계**: 평가지 한 화면에 평가자 3명 열이 나란히 있었고 같은 브라우저에서 입력했다 → 서로의 답이 보였을 수 있다.
+  쌍별 QWK 0.930~0.945 (평균 0.940)·55장 중 34장 세 명 완전 일치는 이 영향으로 부풀려졌을 수 있으며, 독립 평가의 일치도로 인용하지 않는다.
+  다음 평가는 평가자별로 따로 연 평가지(또는 `calibrate rate`)로 받는다
+- 평가지 다운로드·자동 저장이 JS 문법 오류로 동작하지 않아(수정함) 평가 결과는 화면에서 직접 옮긴 `data/ratings/ratings_all.csv`를
+  평가자별 csv로 변환했다 (time 열 = 합본 파일 저장 시각, 실제 입력 시각 아님)
+- 분할은 key.csv 그대로 fit 38 / holdout 17 (fit 40 / holdout 15가 아님). 장수가 적어 holdout QWK 한 값의 오차가 크다

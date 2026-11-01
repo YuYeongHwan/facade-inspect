@@ -51,13 +51,16 @@ def read_ratings(ratings_dir: str | Path) -> dict[str, dict[str, int]]:
     out = {}
     for p in sorted(Path(ratings_dir).glob("*.csv")):
         rs: dict[str, int] = {}
-        with open(p, newline="", encoding="utf-8") as f:
-            for r in csv.DictReader(f):
+        with open(p, newline="", encoding="utf-8-sig") as f:
+            rd = csv.DictReader(f)
+            if "rating" not in (rd.fieldnames or []):  # 평가자별 형식이 아닌 csv (예: 합본 ratings_all.csv)는 건너뛴다
+                continue
+            for r in rd:
                 if r["rating"]:
                     rs[r["image"]] = int(r["rating"])
                 else:  # 되돌리기
                     rs.pop(r["image"], None)
-        out[p.stem] = rs
+            out[p.stem] = rs
     return out
 
 
@@ -141,13 +144,13 @@ def fit_cuts(csi: np.ndarray, y: np.ndarray, init, cfg: dict) -> tuple[list[floa
     return cuts, best
 
 
-def fit(x: np.ndarray, y: np.ndarray, k0: np.ndarray, cuts0, k_s_max: int, cfg: dict) -> dict:
+def fit(x: np.ndarray, y: np.ndarray, k0: np.ndarray, cuts0, k_s_max: int, cfg: dict, cuts_only: bool = False) -> dict:
     """k_t(상대값, 최댓값 1)와 기준값을 번갈아 좌표 하강. 바꿔도 QWK가 오르지 않으면 초기값 유지
-    (평가 데이터에 없는 종류의 k_t는 그대로 남는다)."""
+    (평가 데이터에 없는 종류의 k_t는 그대로 남는다). cuts_only = k_t는 초기값 고정, 기준값만."""
     grid = np.arange(cfg["kt_grid"][0], cfg["kt_grid"][1] + 1e-9, cfg["kt_grid"][2])
     k = k0 / k0.max()
     cuts, best = fit_cuts(csi_values(x, k, k_s_max), y, cuts0, cfg)
-    for _ in range(cfg["passes"]):
+    for _ in range(0 if cuts_only else cfg["passes"]):
         improved = False
         for t in range(len(TYPES)):
             if not x[:, t].any():
@@ -164,14 +167,14 @@ def fit(x: np.ndarray, y: np.ndarray, k0: np.ndarray, cuts0, k_s_max: int, cfg: 
     return {"k_rel": k, "cuts": cuts, "qwk": best}
 
 
-def cross_validate(x: np.ndarray, y: np.ndarray, k0, cuts0, k_s_max: int, cfg: dict) -> list[float]:
+def cross_validate(x: np.ndarray, y: np.ndarray, k0, cuts0, k_s_max: int, cfg: dict, cuts_only: bool = False) -> list[float]:
     """k-fold: train에서 fit, test에서 QWK."""
     idx = np.random.default_rng(cfg["seed"]).permutation(len(y))
     folds = np.array_split(idx, min(cfg["folds"], len(y)))
     out = []
     for f in folds:
         tr = np.setdiff1d(idx, f)
-        r = fit(x[tr], y[tr], k0, cuts0, k_s_max, cfg)
+        r = fit(x[tr], y[tr], k0, cuts0, k_s_max, cfg, cuts_only)
         out.append(qwk(y[f], levels_of(csi_values(x[f], r["k_rel"], k_s_max), r["cuts"])))
     return out
 
@@ -310,12 +313,21 @@ def fit_cmd(
     regions: list[Path] = typer.Option(..., exists=True, dir_okay=False, help="오염 분석 result.json (여러 개 가능)"),
     ratings_dir: Path = typer.Option(None),
     doc: Path = typer.Option(None, help="docs/scoring.md — 보정 결과 절 갱신 + 혼동 행렬 그림"),
+    split: Path = typer.Option(None, exists=True, dir_okay=False,
+                               help="image,split csv (runs/csi_calib/key.csv) — split=fit으로 맞추고 holdout으로 평가"),
+    cuts_only: bool = typer.Option(False, help="k_t는 config 값 고정, level 기준값 4개만 보정"),
 ) -> None:
     cfg, grading = load_config("calibrate"), load_config("grading")
     ratings = read_ratings(ratings_dir or ROOT / cfg["ratings_dir"])
     cons = consensus(ratings)
     reg = load_regions(regions)
     keys = sorted(set(cons) & set(reg))
+    hold: list[str] = []
+    if split:
+        with open(split, newline="", encoding="utf-8-sig") as f:
+            sp = {r["image"]: r["split"] for r in csv.DictReader(f)}
+        hold = [k for k in keys if sp.get(k) == "holdout"]
+        keys = [k for k in keys if sp.get(k) == "fit"]
     if len(keys) < 10:
         raise typer.BadParameter(f"평가와 영역 표가 둘 다 있는 이미지 {len(keys)}장 — 10장 이상 필요")
     x, y = features([reg[k] for k in keys]), np.array([cons[k] for k in keys])
@@ -323,11 +335,16 @@ def fit_cmd(
     cuts0 = [lv["min_csi"] for lv in sorted(grading["levels"], key=lambda lv: lv["level"])][1:]
     ks = grading["severity"]["max"]
     p0 = levels_of(csi_values(x, k0, ks), cuts0)
-    r = fit(x, y, k0, cuts0, ks, cfg["fit"])
+    r = fit(x, y, k0, cuts0, ks, cfg["fit"], cuts_only)
     p1 = levels_of(csi_values(x, r["k_rel"], ks), r["cuts"])
-    cv = cross_validate(x, y, k0, cuts0, ks, cfg["fit"])
+    cv = cross_validate(x, y, k0, cuts0, ks, cfg["fit"], cuts_only)
     weights = {t: round(float(v * k0.max()), 3) for t, v in zip(TYPES, r["k_rel"])}
-    md = result_md(ratings, len(keys), qwk(y, p0), r["qwk"], cv, weights, r["cuts"], grading)
+    q0, ho = qwk(y, p0), None
+    if hold:  # 보정에 쓰지 않은 holdout에서 보정 전·후 비교 (혼동 행렬도 holdout 기준)
+        xh, y = features([reg[k] for k in hold]), np.array([cons[k] for k in hold])
+        p0, p1 = levels_of(csi_values(xh, k0, ks), cuts0), levels_of(csi_values(xh, r["k_rel"], ks), r["cuts"])
+        ho = (len(hold), qwk(y, p0), qwk(y, p1), float(np.mean(y == p0)), float(np.mean(y == p1)))
+    md = result_md(ratings, len(keys), q0, r["qwk"], cv, weights, r["cuts"], grading, ho)
     print(md)
     print("\n# config/grading.yaml 반영용 (사람이 검토 후 옮긴다)")
     print("weights: " + json.dumps(weights))
@@ -339,15 +356,19 @@ def fit_cmd(
         print(f"→ {doc}, {fig}")
 
 
-def result_md(ratings, n, q0, q1, cv, weights, cuts, grading) -> str:
+def result_md(ratings, n, q0, q1, cv, weights, cuts, grading, ho=None) -> str:
+    """ho = holdout (장수, 보정 전 QWK, 보정 후 QWK, 보정 전 완전 일치율, 보정 후 완전 일치율) 또는 None."""
     return "\n".join([
-        f"보정 실행: {time.strftime('%Y-%m-%d %H:%M')} · 평가자 {len(ratings)}명 · 평가+영역 표가 있는 이미지 {n}장",
+        f"보정 실행: {time.strftime('%Y-%m-%d %H:%M')} · 평가자 {len(ratings)}명 · 보정에 쓴 이미지 {n}장"
+        + (f" · holdout {ho[0]}장" if ho else ""),
         "", "**평가자 간 일치도** (quadratic weighted kappa [R24], 해석 기준 [R25])", "", agreement_md(ratings), "",
         "**CSI ↔ 합의 등급 일치도**", "",
         "| 설정 | QWK |", "|---|---|",
         f"| 보정 전 초기값 (config) | {q0:.3f} |",
-        f"| 보정값 (전체 데이터에 맞춤) | {q1:.3f} |",
+        f"| 보정값 (보정에 쓴 이미지에 맞춤) | {q1:.3f} |",
         f"| 보정값 {len(cv)}-fold 교차 검증 (held-out) | {np.mean(cv):.3f} ± {np.std(cv):.3f} |",
+        *([f"| **holdout {ho[0]}장 — 보정 전 초기값** | {ho[1]:.3f} (완전 일치 {ho[3]:.0%}) |",
+           f"| **holdout {ho[0]}장 — 보정값** | {ho[2]:.3f} (완전 일치 {ho[4]:.0%}) |"] if ho else []),
         *(["", f"⚠️ 이미지 {n}장 — {MIN_RELIABLE}장 미만이라 보정값이 과적합됐을 수 있다. 교차 검증 값을 기준으로 판단할 것"]
           if n < MIN_RELIABLE else []),
         "", "**보정값**", "",

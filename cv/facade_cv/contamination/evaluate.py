@@ -304,9 +304,9 @@ sel.forEach(s=>{{s.value=(st[s.dataset.r]||{{}})[s.dataset.i]||"";s.onchange=()=
 rn.forEach(i=>{{i.value=(st.names||{{}})[i.dataset.r]||"";i.oninput=()=>{{(st.names??={{}})[i.dataset.r]=i.value;save()}}}});
 function count(){{document.getElementById("cnt").textContent=rn.map(i=>`${{i.value||"평가자"+(+i.dataset.r+1)}} ${{sel.filter(s=>s.dataset.r==i.dataset.r&&s.value).length}}/{len(images)}`).join(" · ")}}
 document.querySelectorAll("button").forEach(b=>b.onclick=()=>{{const r=b.dataset.r,n=rn[r].value.trim();
-if(!/^[\w-]+$/.test(n)){{rn[r].focus();rn[r].style.outline="2px solid red";return}}
+if(!/^[\\w-]+$/.test(n)){{rn[r].focus();rn[r].style.outline="2px solid red";return}}
 const t=new Date().toISOString().slice(0,19),rows=sel.filter(s=>s.dataset.r==r&&s.value).map(s=>`${{s.dataset.i}},${{s.value}},${{t}}`);
-const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["image,rating,time\n"+rows.join("\n")+"\n"],{{type:"text/csv"}}));
+const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["image,rating,time\\n"+rows.join("\\n")+"\\n"],{{type:"text/csv"}}));
 a.download=n+".csv";a.click()}});count();
 </script></html>
 """

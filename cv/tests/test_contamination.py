@@ -254,3 +254,19 @@ def test_calib_sheet_is_blind():
     h = sheet_html(["img_001.jpg", "img_002.jpg"], load_config("calibrate"), GRADING)
     assert "images/img_002.jpg" in h and h.count('data-i="img_001.jpg"') == 3  # 평가자 3열
     assert "csi" not in h.lower() and "image,rating,time" in h  # 예측 없음, calibrate가 읽는 csv 형식
+
+
+def test_calib_sheet_script_parses(tmp_path):
+    """평가지 <script>가 문법 오류 없이 파싱된다 (파이썬 문자열의 \\n이 JS 문자열 안에서 실제 줄바꿈이 되면 SyntaxError)."""
+    import shutil
+    import subprocess
+
+    from facade_cv.contamination.evaluate import sheet_html
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node 없음")
+    h = sheet_html(["img_001.jpg"], load_config("calibrate"), GRADING)
+    js = tmp_path / "sheet.js"
+    js.write_text(h.split("<script>")[1].split("</script>")[0], encoding="utf-8")
+    r = subprocess.run([node, "--check", str(js)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

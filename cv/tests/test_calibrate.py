@@ -52,6 +52,8 @@ def test_rating_store_resume_and_undo(tmp_path):
     assert rating_order(imgs, "kim", done_images(p)) == order[1:]  # 이어하기
     append_rating(p, order[1], 4)
     assert read_ratings(tmp_path) == {"kim": {order[0]: 3, order[1]: 4}}
+    (tmp_path / "ratings_all.csv").write_text("\ufeffimage,kim,lee\nw0.jpg,1,2\n", encoding="utf-8")  # 합본 형식은 무시
+    assert read_ratings(tmp_path) == {"kim": {order[0]: 3, order[1]: 4}}
 
 
 def test_agreement_and_consensus():
@@ -98,6 +100,13 @@ def test_fit_keeps_absent_type_weight():
     x[:, 1] = 0  # stain 없음
     r = fit(x, y, K0, CUTS0, 3, load_config("calibrate")["fit"])
     assert r["k_rel"][1] * r["k_rel"].max() == pytest.approx(0.8 / 1.5 * r["k_rel"].max())
+
+
+def test_fit_cuts_only_keeps_weights():
+    x, y = _synthetic(n=200)
+    r = fit(x, y, K0, CUTS0, 3, load_config("calibrate")["fit"], cuts_only=True)
+    assert r["k_rel"] == pytest.approx(K0 / K0.max())
+    assert list(r["cuts"]) == sorted(r["cuts"]) and r["qwk"] > 0.9
 
 
 def test_load_regions_from_result_and_doc_block(tmp_path):
